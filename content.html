@@ -1,0 +1,388 @@
+<div class="col">
+
+<!-- ===================== INTRODUZIONE ===================== -->
+<section>
+    <h2 id="intro">Introduzione</h2>
+    <p>Questo documento spiega, con esempi, immagini e frammenti del codice sorgente, come il gioco capisce a che punto della pista ti trovi: da lì dipendono il completamento dei giri, la validazione del percorso e il comportamento delle scorciatoie.</p>
+    <p>Prima di partire dobbiamo capire gli strumenti che il gioco usa e dare un nome a ognuno. Così sarà più semplice seguire il discorso anche nei casi più particolari.</p>
+
+    <div class="brief">
+        <h4>In breve</h4>
+        <ul>
+            <li>La pista è una <strong>catena di segmenti</strong> invisibili, gli AI Node.</li>
+            <li>Ogni nodo ha una <strong>zona</strong>: se il centro della tua macchina è dentro, puoi essere assegnato a quel nodo.</li>
+            <li>Il gioco ti assegna <strong>un solo nodo corrente</strong>, cercandolo vicino al precedente: da 7 nodi dietro a 15 avanti.</li>
+            <li>Ogni nodo sa quanta strada manca al traguardo, e da questo il gioco ricava la tua distanza dal traguardo.</li>
+            <li>Il traguardo disegnato per terra non conta: un giro vale solo se la distanza e un flag interno dicono che l’hai fatto.</li>
+        </ul>
+    </div>
+
+    <div class="legend">
+        <span><i style="background:var(--end)"></i>estremo del nodo</span>
+        <span><i style="background:var(--centre)"></i>centro del nodo</span>
+    </div>
+</section>
+
+<!-- ===================== 1. AI NODE ===================== -->
+<section>
+    <h2 id="ai-nodes">1. AI Node</h2>
+
+    <figure class="fig" id="fig-node">
+    	<div class="frame">
+            <img src="img/figura-01.png" alt="AI Node">
+        </div>
+        <figcaption>Un AI Node isolato: due estremi (rossi) e un centro (blu).</figcaption>
+    </figure>
+
+    <p>Quello che si vede nell’immagine è un <dfn class="term" tabindex="0" data-def="Segmento invisibile messo di traverso sulla pista, con due estremi e un centro. Nel codice: sAINode.">AI Node</dfn>. È il componente più importante per capire questo documento: il gioco non vede il tracciato come lo vediamo noi, per lui è solo una serie di segmenti chiamati AI Node.</p>
+    <p>Qui ci limitiamo a vedere cos’è un nodo. Cosa fa lo vedremo più avanti. Un nodo ha <strong>2 estremi</strong> (rossi, uno per lato della pista) e <strong>1 centro</strong> (blu): si chiamano “estremo del nodo” e “centro del nodo”.</p>
+
+    <div class="note code">
+        <p><b>Nota chiave.</b> Il centro <strong>non è al centro geometrico</strong> tra i due estremi: in alcuni casi è molto più vicino a un estremo che all’altro. Sul nodo 0 della pista 1 dista circa 120 unità da un estremo e 1250 dall’altro. Vedremo che conta, perché il centro è il punto con cui il gioco confronta la tua distanza.</p>
+    </div>
+
+    <h3 id="ai-node-types" data-toc="Tipi di nodo">1.1 Tipi di nodo (priority)</h3>
+    <p>Gli AI Node non sono tutti uguali. Oltre alle dimensioni e all’orientamento, ogni nodo ha un numero da <strong>0 a 10</strong> chiamato <code>priority</code>. Nello script di export a ogni priority corrisponde un colore. Quasi tutte regolano le scelte delle macchine CPU, ma alcune hanno effetto anche sul giocatore.</p>
+
+    <figure class="fig" id="fig-types">
+    	<div class="frame">
+            <img src="img/figura-02.png" alt="AI Node Types">
+        </div>
+        <figcaption>I tipi di nodo si riconoscono dal colore nell’export.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+        <thead><tr><th>Priority</th><th>Colore</th><th>Nome</th><th>Cosa fa</th><th>Chi riguarda</th></tr></thead>
+        <tbody>
+            <tr><td>0</td><td><span class="chip"><i style="background:#1ad133"></i>verde</span></td><td>Standard</td><td>Il tipo più comune, senza funzioni particolari.</td><td></td></tr>
+            <tr><td>1</td><td><span class="chip"><i style="background:#ffe619"></i>giallo</span></td><td>Ramo armi</td><td>Percorso alternativo legato ai bonus: la CPU che ha già un’arma evita questo ramo.</td><td><span class="who">CPU</span></td></tr>
+            <tr><td>2</td><td><span class="chip"><i style="background:#999"></i>grigio</span></td><td>Sconosciuto</td><td>Nel codice analizzato non ho trovato cosa faccia. <span class="tag-unk">Da verificare.</span></td><td><span class="who">?</span></td></tr>
+            <tr><td>3</td><td><span class="chip"><i style="background:#1ae6e6"></i>turchese</span></td><td>Ramo di recupero</td><td>Preso solo dalla CPU che sta nella metà bassa della classifica.</td><td><span class="who">CPU</span></td></tr>
+            <tr><td>4</td><td><span class="chip"><i style="background:#3366ff"></i>blu</span></td><td>Scorciatoia / coppe</td><td>La scelta dipende da classifica e coppa. Nelle coppe alte lo prendono tutte.</td><td><span class="who">CPU</span></td></tr>
+            <tr><td>5</td><td><span class="chip"><i style="background:#ff1a1a"></i>rosso</span></td><td>Divieto CPU</td><td>La CPU evita sempre questo ramo.</td><td><span class="who">CPU</span></td></tr>
+            <tr><td>6 – 9</td><td><span class="chip"><i style="background:#ffbf66"></i>arancio → <i style="background:#991a00"></i>marrone</span></td><td>Limite manetta</td><td>Limita il gas della CPU a una percentuale fissa: 75% (6), 50% (7), 25% (8), 12% (9).</td><td><span class="who">CPU</span></td></tr>
+            <tr><td>10</td><td><span class="chip"><i style="background:#ff33ff"></i>viola</span></td><td>Checkpoint speciale</td><td>Passarci accende il flag che permette di contare il giro (non sembrerebbe essere presente in nessuna delle piste) (<a href="#giri-flag">sezione 7</a>).</td><td><span class="who player">giocatore</span></td></tr>
+        </tbody>
+    </table></div>
+
+    <div class="note hyp">
+        <p><b>Da verificare.</b> I colori e i nomi sono quelli del nostro export. “Divieto CPU” (priority 5) fa pensare a una scorciatoia pensata per il giocatore, ma dal codice sappiamo solo che la CPU non la prende. Sulla pista 1 ci sono nodi 0, 2, 5, 6 e 7 e nessun nodo 10.</p>
+    </div>
+</section>
+
+<!-- ===================== 2. ZONE ===================== -->
+<section>
+    <h2 id="node-zones">2. Le zone dei nodi</h2>
+
+    <figure class="fig" id="fig-zone">
+	<div class="frame">
+            <img src="img/figura-03.png" alt="Zone">
+        </div>
+        <figcaption>La zona di un nodo: una scatola che avvolge il tratto fino al nodo successivo.</figcaption>
+    </figure>
+
+    <p>Oltre alla forma che abbiamo visto, ogni nodo ha una <dfn class="term" tabindex="0" data-def="Scatola legata a un AI Node. Se il centro della macchina è dentro, il nodo può essere assegnato a quella macchina.">zona</dfn>: uno spazio di pertinenza. È una scatola tridimensionale, costruita così:</p>
+    <ul>
+        <li><strong>sul terreno</strong>, un rettangolo che contiene gli estremi del nodo e quelli del nodo successivo;</li>
+        <li><strong>in altezza</strong>, una fascia di 400 unità sopra e 400 sotto il centro del nodo.</li>
+    </ul>
+    <p>Conta solo il <strong>centro della macchina</strong>: se è dentro la scatola, sei “nella zona”. Stare esattamente sul bordo non vale.</p>
+
+    <p>Le zone <strong>si sovrappongono</strong> parecchio, soprattutto in zone con ostacoli in mezzo al tracciato. In un dato momento puoi essere dentro più zone insieme.</p>
+
+    <figure class="fig" id="fig-overlap">
+	<div class="frame">
+            <img src="img/figura-04.png" alt="Zone affollate">
+        </div>
+        <figcaption>Le zone si sovrappongono. Qui la macchina è dentro tre zone.</figcaption>
+    </figure>
+
+    <div class="note">
+        <p><b>Nota chiave.</b> In questa parte descriviamo solo com’è fatta una zona. Come il gioco la usa per decidere dove sei è il tema della sezione 3.</p>
+    </div>
+</section>
+
+<!-- ===================== 3. NODO CORRENTE ===================== -->
+<section>
+    <h2 id="current-node">3. Il nodo corrente (<code>pCurNode</code>) e la ricerca locale</h2>
+    <p>A ogni aggiornamento la macchina è associata a un nodo, tramite un puntatore chiamato <code>pCurNode</code>. È il legame tra il veicolo e la struttura logica del tracciato, ed è quello che il gioco usa per:</p>
+    <ul>
+        <li><strong>Progressione e classifica:</strong> spazio percorso, giri completati e posizione di ogni concorrente.</li>
+        <li><strong>Guida della CPU:</strong> sterzata, traiettoria, scelta di bivi e scorciatoie.</li>
+        <li><strong>Contromano e recupero:</strong> se vai nel verso sbagliato, il gioco guarda i nodi vicini al tuo.</li>
+    </ul>
+    <p>Per il giocatore il nodo corrente viene ricalcolato a ogni esecuzione di <code>PlayerControl</code> (la funzione che governa la macchina del giocatore), cioè ogni 20 unità di tempo. Il metodo è la <strong>ricerca locale</strong>: il gioco non guarda tutta la pista, ma solo i nodi attorno all’ultimo nodo noto.</p>
+
+    <h3 id="search-window" data-toc="La finestra di ricerca">3.1 La finestra di ricerca</h3>
+    <p>L’insieme dei nodi che il gioco controlla si chiama <dfn class="term" tabindex="0" data-def="I nodi che il gioco prende in considerazione a ogni aggiornamento: pochi dietro e pochi avanti al nodo corrente.">finestra di ricerca</dfn>. La scansione è fatta da due funzioni ricorsive: <code>AINodeBackTrackRecursive</code> per i nodi precedenti e <code>AINodeForwardTrackRecursive</code> per i successivi. Per il giocatore la finestra è questa:</p>
+
+    <div class="table-wrap"><table>
+        <thead><tr><th>Chi</th><th>Indietro</th><th>Avanti</th><th>Bivi</th></tr></thead>
+        <tbody>
+            <tr><td>Giocatore</td><td>7 nodi</td><td>15 nodi</td><td>esamina entrambi i rami</td></tr>
+            <tr><td>CPU</td><td>7 nodi</td><td>8 nodi</td><td>solo il ramo che ha scelto</td></tr>
+        </tbody>
+    </table></div>
+
+    <p>Sono 23 nodi (1 corrente, 7 indietro e 15 avanti) su un tratto senza bivi. Ai bivi la finestra conta i passi lungo ciascun ramo: puoi esaminare più nodi in totale, ma sempre entro 7 passi indietro e 15 avanti su ognuno.</p>
+
+    <figure class="fig" id="fig-window">
+	<div class="frame">
+            <img src="img/figura-05.png" alt="Vista zone evidenziate">
+        </div>
+        <figcaption>La finestra del giocatore: 1 zona corrente [verde], 7 indietro [blu], 15 avanti [rosso]. 23 zone in tutto su un tratto senza bivi.</figcaption>
+    </figure>
+
+    <div class="note real">
+        <p><b>Perché “7 e 15” e non “8 e 16”.</b> Nel codice i numeri sono 8 e 0x10 (16), ma ogni chiamata ricorsiva ne consuma uno prima di controllare. <code>BackTrack(nodo, 8)</code> risale di 7 passi e da lì controlla 16 nodi in avanti (da −7 a +8). <code>ForwardTrack(nodo, 16)</code> sale di 15 passi e da lì controlla 16 nodi all’indietro (da +15 a 0). L’unione è da −7 a +15. Se contiamo anche il nodo corrente, l’ultima zona utile in avanti è <strong>la sedicesima</strong>: quella di partenza più 15.</p>
+    </div>
+
+<pre><code>// AINodeUpdateCurrent (AINODE.c), ramo del giocatore
+psVar4-&gt;iRange = 0x10;
+AINodeBackTrackRecursive(pCurNode, 8);       // da -7 a +8
+psVar4-&gt;iRange = 0x10;
+AINodeForwardTrackRecursive(pCurNode, 0x10); // da 0 a +15</code></pre>
+
+    <div class="note code">
+        <p><b>La prova.</b> Ho riprodotto le tre funzioni riga per riga e contato i nodi realmente esaminati: risultano esattamente da −7 a +15, senza buchi, in totale 23.</p>
+    </div>
+
+    <h3 id="overlaps" data-toc="Zone sovrapposte">3.2 Quando le zone si sovrappongono</h3>
+    <p>Se la macchina è dentro più zone della finestra, il gioco calcola la distanza (nello spazio 3D) tra la macchina e il <strong>centro</strong> di ciascun nodo candidato. Il nuovo <code>pCurNode</code> è quello con il centro più vicino. A parità vince il primo trovato.</p>
+    <div class="note code">
+        <p><b>Quindi:</b> non conta il nodo la cui zona “ti contiene meglio”, conta il centro più vicino. Per questo il centro fuori posizione (vedi la nota nella sezione 1) cambia davvero quale nodo ti viene assegnato.</p>
+    </div>
+
+    <h3 id="skipping" data-toc="Skip e oltre la finestra">3.3 Skip e oltre la finestra</h3>
+    <p>La finestra decide quanto il gioco tollera tagli e salti. Quello che conta è dove atterri rispetto al nodo che avevi <em>prima</em> del salto:</p>
+    <ul>
+        <li><strong>Entro la finestra.</strong> Se atterri, per esempio, 5 o 10 nodi più avanti, la ricerca trova la zona dove sei. <code>pCurNode</code> si aggiorna e il gioco accetta lo spostamento, come se avessi guidato.</li>
+        <li><strong>Oltre la finestra.</strong> Se atterri oltre la sedicesima zona (quella di partenza più 15), nessuna zona esaminata contiene la macchina. Per ora diciamo che il nodo resta quello vecchio.</li>
+    </ul>
+</section>
+
+<!-- ===================== 4. ESEMPI ===================== -->
+<section>
+    <h2 id="practical-examples">4. Esempi pratici sulla finestra di ricerca</h2>
+
+    <h3 id="ex-canyon" data-toc="Esempio 1: Calamity Canyon">Esempio 1: Calamity Canyon (l’incrocio)</h3>
+    <figure class="fig" id="fig-ex1">
+	<div class="frame">
+            <img src="img/figura-06.png" alt="Zone in Calamity Canyon">
+        </div>
+        <figcaption>Calamity Canyon: l’incrocio unisce due punti della catena molto distanti tra loro.</figcaption>
+    </figure>
+    <p>Calamity Canyon mostra il limite geometrico della finestra. Il percorso passa due volte nello stesso incrocio, ma i nodi dei due passaggi sono molto lontani nella catena. Chi imbocca la diramazione sbagliata trova il tratto successivo troppo avanti, oltre la finestra: l’area alternativa è fuori dalla ricerca locale, quindi non puoi “prenderti” il tratto lontano.</p>
+
+    <h3 id="ex-summer" data-toc="Esempio 2: I Know What You Drove">Esempio 2: “I Know What You Drove Last Summer”</h3>
+    <figure class="fig" id="fig-ex2">
+	<div class="frame">
+            <img src="img/figura-07.png" alt="Zone in IKWYDLS">
+        </div>
+        <figcaption>Lo skip atterra nell’ultima zona utile della finestra.</figcaption>
+    </figure>
+    <p>È lo skip del <a href="https://www.speedrun.com/rc_revenge_pro/runs/y8kqlgxy" target="_blank" rel="noopener">record di cocodoggo</a> su questa pista. Atterrando, la macchina aggancia la <strong>sedicesima zona</strong> (partenza + 15), l’ultima utile, in viola. Il margine residuo è di 2 zone: con due zone in più nel tratto tagliato la ricerca locale non avrebbe visto l’atterraggio.</p>
+
+    <h3 id="ex-cars" data-toc="Esempio 3: Cars Attacks Again">Esempio 3: “Cars Attacks! Again!”</h3>
+    <figure class="fig" id="fig-ex3">
+	<div class="frame">
+            <img src="img/figura-08.png" alt="Zone in Cars Attacks Again">
+        </div>
+        <figcaption>Zone semitrasparenti, perché con materiali opachi il tratto è illeggibile.</figcaption>
+    </figure>
+    <p>Dal <a href="https://www.speedrun.com/rc_revenge_pro/runs/yvx39doz" target="_blank" rel="noopener">record di SteveNerd</a>, su una shortcut scoperta da cocodoggo. Il tratto ha così tante zone sovrapposte che per leggerlo servono volumi semitrasparenti. Dal punto di stacco all’atterraggio ci sono <strong>esattamente 16 zone</strong>: con una zona in più, lo skip sarebbe fuori dalla finestra.</p>
+
+    <h3 id="ex-lost" data-toc="Esempio 4: oltre la finestra">Esempio 4: oltre la finestra</h3>
+    <figure class="fig" id="fig-ex4">
+	<div class="frame">
+            <img src="img/figura-09.png" alt="ISKWYDLS">
+        </div>
+        <figcaption>La macchina atterra subito dopo l’ultima zona rossa: la finestra non la vede.</figcaption>
+    </figure>
+    <p>Un’altra scoperta di <a href="https://od.lk/s/NzBfNDQwMzE5ODNfaUZhbTE/i%20still%20what%20you%20drove%20last%20summer.mov" target="_blank" rel="noopener">cocodoggo</a>: cosa succede quando lo skip supera la soglia. La macchina atterra appena oltre la sedicesima zona (X blu), subito davanti all’ultima zona rossa. Un soffio più indietro e sarebbe stata agganciata, invece la ricerca locale fallisce.</p>
+    <p>In gara il giocatore non vede dove finisce la copertura delle zone: invece di sfruttare il margine fa una manovra di retromarcia più lunga, in un’area priva di nodi, finché riaggancia un punto valido.</p>
+    <div class="note">
+        <p><b>Da ricordare.</b> Gli esempi vanno riletti dopo la sezione 6: è lì che scopriamo che la finestra non è l’unico controllo.</p>
+    </div>
+</section>
+
+<!-- ===================== 5. DISTANZA ===================== -->
+<section>
+    <h2 id="finish-dist">5. La distanza dal traguardo</h2>
+    <p>Finora abbiamo visto <em>dove</em> sei (il nodo). Il gioco però vuole sapere anche <em>quanta strada ti resta</em>, perché è da questo numero che ricava giri e classifica. Per farlo ogni nodo porta con sé un valore.</p>
+
+    <figure class="fig" id="fig-fdist" data-img="img/figura-11.png" data-title="La distanza dal traguardo scritta in ogni nodo" data-hint="Pista con i nodi colorati da caldo (lontano dal traguardo) a freddo (vicino), oppure con qualche numero iFinishDist scritto su un nodo ogni tanto. Il traguardo ha 0.">
+        <figcaption>Ogni nodo sa quanta strada manca al traguardo.</figcaption>
+    </figure>
+
+    <h3 id="ifinishdist" data-toc="Il valore del nodo">5.1 Il valore scritto nel nodo</h3>
+    <p>Ogni nodo contiene un numero, chiamato <code>iFinishDist</code>: <strong>la strada che resta da quel nodo al traguardo</strong>, seguendo la catena. Il nodo del traguardo ha 0, quello subito prima ha un valore piccolo, quelli lontani hanno valori grandi. La somma dell’intero giro si chiama <code>nodeTotalDist</code>: sulla pista 1 vale 131008.</p>
+    <p>Due conseguenze importanti:</p>
+    <ul>
+        <li>Questo valore è <strong>fisso</strong>: non dipende da dove sei, è scritto nel file della pista.</li>
+        <li>Il traguardo, per il gioco, è semplicemente il nodo con <code>iFinishDist = 0</code> (sulla pista 1, il nodo 1).</li>
+    </ul>
+
+    <h3 id="along" data-toc="Quanto hai percorso nel nodo">5.2 Quanto hai percorso dentro il nodo</h3>
+    <p>Il nodo ti dice quanto manca <em>dal suo centro</em>, ma tu non sei mai esattamente sul centro. Per correggere, il gioco misura quanto sei avanti rispetto al centro, lungo la direzione di marcia.</p>
+    <ul>
+        <li><strong>Direzione di marcia:</strong> una freccia che va dal centro del nodo al centro del successivo. Ai bivi (nodo con due successivi) è la media delle due frecce.</li>
+        <li><strong>Avanzamento:</strong> si prende la posizione della macchina rispetto al centro del nodo e si proietta sulla freccia (un prodotto scalare). Contano solo i metri in avanti: spostarti di lato non cambia il valore.</li>
+    </ul>
+
+    <figure class="fig" id="fig-along" data-img="img/figura-12.png" data-title="Avanzamento lungo la direzione del nodo" data-hint="Nodo con la freccia di direzione, macchina davanti al centro, linea di proiezione perpendicolare alla freccia. Evidenzia che lo spostamento laterale non conta.">
+        <figcaption>Si misura solo l’avanzamento lungo la freccia. Spostarsi di lato non cambia il numero.</figcaption>
+    </figure>
+
+    <p>La distanza dal traguardo della macchina è quindi:</p>
+<pre><code>avanzamento     = prodotto_scalare(pos_macchina - centro_nodo, direzione_nodo)   // AINodeDistanceAlong
+distanza_finale = nodo.iFinishDist - avanzamento                                  // AINodeUpdateFinishDistance
+se distanza_finale &lt; 0:  distanza_finale += nodeTotalDist                        // sei oltre il traguardo: giro nuovo</code></pre>
+
+    <div class="note hyp">
+        <p><b>Ipotesi.</b> Il risultato del prodotto scalare viene dal processore grafico della PS2 (GTE) in virgola fissa, e la scala esatta non è verificata: assumo che sia riportata alle stesse unità delle posizioni. L’idea (avanzamento lungo la direzione) è sicura, il fattore numerico no.</p>
+    </div>
+
+    <h3 id="raced" data-toc="Distanza percorsa">5.3 Distanza rimanente e distanza percorsa</h3>
+    <p>Da qui il gioco ricava due numeri, aggiornati a ogni aggiornamento:</p>
+    <ul>
+        <li><code>iFinishDist</code> (della macchina): quanta strada manca per chiudere il giro;</li>
+        <li><code>iTotalRacedDist</code>: quanta strada hai percorso in tutta la gara. È <code>(nodeTotalDist − distanza_finale) + giri_completati × nodeTotalDist</code>, più un termine che compensa l’attraversamento all’indietro del traguardo (sezione 7).</li>
+    </ul>
+    <div class="note hyp">
+        <p><b>Da verificare.</b> Non ho ancora visto dove il gioco usa <code>iTotalRacedDist</code>: dal nome è il candidato naturale per ordinare la classifica, ma lo scrivo come ipotesi.</p>
+    </div>
+</section>
+
+<!-- ===================== 6. RICERCA GLOBALE ===================== -->
+<section>
+    <h2 id="global-search">6. Abbiamo detto una mezza bugia</h2>
+    <p>Nelle sezioni 3 e 4 abbiamo detto che, se atterri oltre la finestra, il gioco non ti rivede e il nodo resta quello vecchio. Era una semplificazione. Il gioco ha <strong>un secondo controllo</strong>, che non è locale: guarda tutta la pista, e usa proprio la distanza dal traguardo che abbiamo appena visto.</p>
+
+    <h3 id="global-how" data-toc="Come funziona">6.1 La ricerca per distanza</h3>
+    <p>Per il giocatore, quando la finestra non trova nessun nodo, il gioco chiama <code>AINodeNearestInRange</code>. Funziona così:</p>
+    <ol>
+        <li>Prende il valore <code>iFinishDist</code> del <strong>nodo che avevi prima</strong> (<code>pPrevValidNode</code>, copia dell’ultimo nodo corrente).</li>
+        <li>Scorre <strong>tutti i nodi della pista</strong> e tiene solo quelli il cui <code>iFinishDist</code> differisce da quello meno di <strong>11000 unità</strong>, in avanti o all’indietro.</li>
+        <li>Tra questi, considera solo quelli la cui zona contiene la macchina (stessa regola di prima, con altezza ±400 e stessa superficie: acqua o terra).</li>
+        <li>Se ce n’è più di uno, vince il centro più vicino.</li>
+    </ol>
+
+    <figure class="fig" id="fig-global" data-img="img/figura-13.png" data-title="La fascia di 11000 unità attorno al nodo di partenza" data-hint="Pista con i nodi colorati in base a |iFinishDist - iFinishDist(partenza)| < 11000: la fascia verde contigua attorno al nodo di partenza, il resto grigio. Mostra che la fascia non è uguale al +15 della finestra.">
+        <figcaption>La ricerca per distanza considera tutti i nodi entro 11000 unità di distanza dal traguardo rispetto al nodo di partenza.</figcaption>
+    </figure>
+
+    <div class="note code">
+        <p><b>Differenza chiave.</b> La finestra conta <em>quanti nodi</em> ti separano dal nodo di partenza. La ricerca per distanza conta <em>quante unità di strada</em>. Non sono la stessa cosa: se i nodi sono radi, 11000 unità possono valere più di 15 nodi. Se sono fitti, meno.</p>
+    </div>
+
+    <h3 id="global-lost" data-toc="Se non trova nulla">6.2 Se non trova nulla</h3>
+    <p>Se nemmeno la ricerca per distanza trova un nodo, il gioco prova <code>AINodeInAnyNode</code>: controlla se la macchina è dentro la zona di <em>qualunque</em> nodo. Se sì, aumenta il contatore <code>iGettingLost</code> (che indica che sei “perso”, cioè su una zona della pista ma lontano dal tuo nodo) e azzera il flag del contromano, ma <strong>non ti riassegna a quel nodo</strong>. Se nessuno dei tre tentativi dà un nodo, <code>pCurNode</code> torna a <code>pPrevValidNode</code>: resti legato al nodo vecchio.</p>
+
+    <div class="table-wrap"><table>
+        <thead><tr><th>Passo</th><th>Cosa controlla</th><th>Se trova un nodo</th></tr></thead>
+        <tbody>
+            <tr><td>1</td><td>Finestra: da −7 a +15 nodi</td><td>Ti assegna il nodo con il centro più vicino.</td></tr>
+            <tr><td>2</td><td>Tutti i nodi con <code>iFinishDist</code> entro 11000 dal nodo di partenza</td><td>Ti assegna il nodo con il centro più vicino.</td></tr>
+            <tr><td>3</td><td>Tutti i nodi, per sapere se sei da qualche parte sulla pista</td><td>Non ti riassegna. Aumenta <code>iGettingLost</code>.</td></tr>
+            <tr><td>4</td><td>Nulla trovato</td><td>Resti sul nodo vecchio.</td></tr>
+        </tbody>
+    </table></div>
+
+    <div class="note hyp">
+        <p><b>Un dettaglio da verificare.</b> Dalla lettura del codice la differenza di <code>iFinishDist</code> è calcolata senza considerare che la distanza è circolare (dopo il traguardo si riparte da zero). Se è così, vicino al traguardo la ricerca per distanza non “vede” i nodi che stanno dall’altra parte della linea. Va controllato nel codice di <code>AINodeNearestInRange</code>.</p>
+    </div>
+
+    <h3 id="global-examples" data-toc="Effetto sugli esempi">6.3 Cosa cambia per gli esempi</h3>
+    <p>Questo cambia, potenzialmente, la lettura degli esempi della sezione 4. Un atterraggio oltre la sedicesima zona <em>non</em> viene necessariamente perso: viene riagganciato dalla ricerca per distanza se il nodo di atterraggio ha un <code>iFinishDist</code> entro 11000 da quello di partenza.</p>
+    <ul>
+        <li><strong>Esempio 2 (Calamity Canyon).</strong> I due punti dell’incrocio sono lontani nella catena, quindi anche in <code>iFinishDist</code>: la differenza è molto più di 11000. Sia la finestra sia la ricerca per distanza li escludono, ed è questo che impedisce il salto.</li>
+        <li><strong>Esempi 3 e 4.</strong> Atterrano sulla sedicesima zona, quindi li prende già la finestra. La ricerca per distanza non serve.</li>
+        <li><strong>Esempio 5.</strong> Atterra appena oltre la sedicesima: la finestra fallisce, ma la ricerca per distanza potrebbe riagganciare. Dipende dal valore di <code>iFinishDist</code> del nodo di atterraggio rispetto a quello di partenza.</li>
+    </ul>
+    <div class="note hyp">
+        <p><b>Non ancora verificato.</b> Per sapere cosa succede davvero in ogni esempio serve confrontare gli <code>iFinishDist</code> dei nodi di partenza e di atterraggio. Finché non lo facciamo, le conclusioni sugli esempi 2 e 5 sono ipotesi.</p>
+    </div>
+</section>
+
+<!-- ===================== 7. TRAGUARDO E GIRI ===================== -->
+<section>
+    <h2 id="giri-flag">7. Il traguardo è un’illusione</h2>
+
+    <figure class="fig" id="fig-line" data-img="img/figura-14.png" data-title="Traguardo disegnato e traguardo logico" data-hint="La striscia del traguardo disegnata sulla pista e, in sovrimpressione, il piano che passa per il centro del nodo con iFinishDist = 0. Possono non coincidere.">
+        <figcaption>La linea che vedi non è quella che il gioco controlla.</figcaption>
+    </figure>
+
+    <p>Sulla pista c’è una striscia a scacchi, ma al gioco non interessa. Non esiste nessun sensore di collisione sulla linea. Per il gioco il giro è un numero: la tua distanza dal traguardo (<code>iFinishDist</code> della macchina), che scende a mano a mano che avanzi. Quando arrivi a 0 e superi il centro del nodo del traguardo, il numero <strong>salta da quasi zero a quasi il giro intero</strong>. Quel salto è il “traguardo” del gioco.</p>
+
+    <h3 id="giri-regole" data-toc="Quando conta un giro">7.1 Quando conta un giro</h3>
+    <p>A ogni aggiornamento il gioco confronta la nuova distanza con quella dell’aggiornamento precedente:</p>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Cosa succede alla distanza</th><th>Soglia (pista 1)</th><th>Che cosa significa</th></tr></thead>
+        <tbody>
+            <tr><td>Sale di colpo di <strong>più di <code>nodeTotalDist − 6000</code></strong></td><td>oltre 125008</td><td>Hai passato il traguardo <strong>in avanti</strong>. Il giro conta solo se il flag è acceso.</td></tr>
+            <tr><td>Scende di colpo di <strong>più di <code>nodeTotalDist − 4500</code></strong></td><td>oltre 126508</td><td>Hai passato il traguardo <strong>all’indietro</strong> (sei tornato prima della linea).</td></tr>
+            <tr><td>Qualsiasi altro cambiamento</td><td></td><td>Marcia normale: nessun giro.</td></tr>
+        </tbody>
+    </table></div>
+    <p>Notare che le soglie guardano <em>il salto del numero</em>, non cosa hai fatto con la macchina. Il gioco non sa se sei passato davvero dalla linea: sa solo che la tua distanza è saltata da quasi 0 a quasi il giro intero.</p>
+
+    <h3 id="giri-flag-2" data-toc="Il flag">7.2 Il flag che autorizza il giro</h3>
+    <p>Se bastasse il salto, potresti passare avanti e indietro sulla linea e contare giri a ogni passaggio. Per evitarlo c’è un flag interno, <code>iHalfLapDone</code> (“mezzo giro fatto”). Il giro viene contato solo se il flag è acceso, e appena contato il giro il flag si spegne.</p>
+
+    <figure class="fig" id="fig-flag">
+        <svg viewBox="0 0 720 190" role="img" aria-label="Linea della distanza rimanente: il flag si accende quando si scende sotto un quarto del giro, provenendo da tra un quarto e metà">
+            <line x1="40" y1="90" x2="680" y2="90" stroke="#4a515b" stroke-width="4"/>
+            <rect x="360" y="70" width="160" height="40" fill="#f2c230" opacity=".18"/>
+            <g stroke="#e8e6e1" stroke-width="2"><path d="M40 78v24M360 78v24M520 78v24M680 78v24"/></g>
+            <g font-family="Archivo, sans-serif" font-size="13" fill="#e8e6e1" text-anchor="middle">
+                <text x="14" y="128" text-anchor="start">giro intero</text>
+                <text x="14" y="146" text-anchor="start" fill="#9b9ea6">(subito dopo la linea)</text>
+                <text x="360" y="128">metà giro</text>
+                <text x="520" y="128">un quarto</text>
+                <text x="680" y="128">0 (la linea)</text>
+            </g>
+            <g font-family="Archivo, sans-serif" font-size="13" text-anchor="middle">
+                <text x="440" y="62" fill="#f2c230">zona da cui parte il controllo</text>
+            </g>
+            <text x="520" y="26" text-anchor="middle" font-family="Archivo, sans-serif" font-size="13" fill="#f2c230">scendere sotto 1/4 partendo da tra 1/2 e 1/4 = flag acceso</text>
+            <text x="360" y="176" text-anchor="middle" font-family="Archivo, sans-serif" font-size="13" fill="#9b9ea6">la macchina avanza da sinistra a destra: la distanza rimanente scende</text>
+        </svg>
+        <figcaption>Il flag si accende nell’ultimo quarto del giro, non a metà.</figcaption>
+    </figure>
+
+    <p>Il flag si accende in due modi:</p>
+    <ol>
+        <li><strong>Passando da un nodo di priority 10</strong> (viola): il flag diventa 1 subito.</li>
+        <li><strong>Con la distanza.</strong> Se nell’aggiornamento precedente la distanza rimanente era tra un quarto e metà del giro, e ora è sotto un quarto, il flag si accende.</li>
+    </ol>
+    <div class="note hyp">
+        <p><b>Attenzione al nome.</b> Il flag si chiama “mezzo giro”, ma con la regola della distanza si accende quando mancano meno di un quarto di giro alla linea: l’ultimo quarto, non la metà. Il nome è solo quello che ha scelto chi ha scritto il codice.</p>
+    </div>
+    <p>Sulla pista 1 non ci sono nodi di priority 10, quindi lì conta solo la regola della distanza. Una conseguenza: poiché il controllo guarda l’aggiornamento <em>precedente</em>, un salto diretto da più di metà giro a meno di un quarto salta del tutto il controllo e lascia il flag spento (a meno che non passi da un nodo di priority 10).</p>
+
+    <h3 id="giri-inizio" data-toc="Partenza e fine gara">7.3 Partenza, passaggio all’indietro e fine</h3>
+    <ul>
+        <li><strong>Partenza.</strong> A inizio gara il contatore dei giri vale −1 e il flag è già acceso, così il primo passaggio dalla linea (la partenza) conta come giro 0 e fa partire i tempi.</li>
+        <li><strong>Passare all’indietro.</strong> Il gioco imposta <code>iLineClockOver</code> a −1, un fattore che serve a tenere corretta la distanza totale percorsa. Quando poi torni in avanti, il valore torna a 0, e il giro conta di nuovo solo se il flag è acceso. Non accumuli giri avanti e indietro.</li>
+        <li><strong>Fine gara.</strong> Quando i giri completati raggiungono il numero di giri della gara, la macchina passa sotto il controllo dell’autopilota (<code>AIControl</code>) e viene registrato il tempo finale.</li>
+    </ul>
+
+    <h3 id="wrongway" data-toc="Contromano">7.4 Il contromano</h3>
+    <p>Solo per i giocatori, il gioco misura anche quanto stai andando nel verso sbagliato. Se la macchina si muove nella direzione in cui è rivolta e la distanza dal traguardo <strong>aumenta</strong> di 1–499 unità tra due aggiornamenti, il contatore <code>iGoingWrongWay</code> cresce di quella quantità (massimo 1500). In tutti gli altri casi cala di 20 per aggiornamento, fino a zero.</p>
+    <div class="note hyp">
+        <p><b>Da verificare.</b> Questo è solo il contatore. Quale soglia faccia comparire l’avviso di contromano non è in queste funzioni.</p>
+    </div>
+
+    <h3 id="giri-trucchi" data-toc="Cosa puoi fare">7.5 Cosa significa per le scorciatoie</h3>
+    <ul>
+        <li>Un giro conta perché il numero salta, non perché passi dalla linea. Se la distanza salta in avanti oltre la soglia con il flag acceso, il giro vale, anche se non sei nel punto del traguardo disegnato.</li>
+        <li>Tagliare una parte di pista con un salto di nodi (entro le regole delle sezioni 3 e 6) non è visto come un problema: il gioco misura la distanza, non il percorso fatto.</li>
+        <li>Per ottenere un giro bisogna comunque arrivare all’ultimo quarto del giro (o toccare un nodo di priority 10), poi saltare oltre la soglia del traguardo.</li>
+    </ul>
+    <div class="note hyp">
+        <p><b>Da verificare.</b> Queste conseguenze vengono dalla lettura del codice e non le ho provate in gioco.</p>
+    </div>
+</section>
+
+</div>
