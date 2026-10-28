@@ -211,27 +211,33 @@ AINodeForwardTrackRecursive(pCurNode, 0x10); // da 0 a +15</code></pre>
     <h2 id="finish-dist">5. La distanza dal traguardo</h2>
     <p>Finora abbiamo visto <em>dove</em> sei (il nodo). Il gioco però vuole sapere anche <em>quanta strada ti resta</em>, perché è da questo numero che ricava giri e classifica. Per farlo ogni nodo porta con sé un valore.</p>
 
-    <figure class="fig" id="fig-fdist" data-img="img/figura-11.png" data-title="La distanza dal traguardo scritta in ogni nodo" data-hint="Pista con i nodi colorati da caldo (lontano dal traguardo) a freddo (vicino), oppure con qualche numero iFinishDist scritto su un nodo ogni tanto. Il traguardo ha 0.">
+    <figure class="fig" id="fig-fdist">
+	<div class="frame">
+            <img src="img/figura-10.png" alt="Node distance">
+        </div>
         <figcaption>Ogni nodo sa quanta strada manca al traguardo.</figcaption>
     </figure>
 
     <h3 id="ifinishdist" data-toc="Il valore del nodo">5.1 Il valore scritto nel nodo</h3>
-    <p>Ogni nodo contiene un numero, chiamato <code>iFinishDist</code>: <strong>la strada che resta da quel nodo al traguardo</strong>, seguendo la catena. Il nodo del traguardo ha 0, quello subito prima ha un valore piccolo, quelli lontani hanno valori grandi. La somma dell’intero giro si chiama <code>nodeTotalDist</code>: sulla pista 1 vale 131008.</p>
+    <p>Ogni nodo contiene un numero, chiamato <code>iFinishDist</code>: <strong>la strada che resta da quel nodo al traguardo</strong>, seguendo la catena. Il nodo del traguardo ha 0, quello subito prima ha un valore piccolo, quelli lontani hanno valori grandi. La somma dell’intero giro si chiama <code>nodeTotalDist</code>, ad esempio sulla pista 1 vale 131008.</p>
     <p>Due conseguenze importanti:</p>
     <ul>
-        <li>Questo valore è <strong>fisso</strong>: non dipende da dove sei, è scritto nel file della pista.</li>
-        <li>Il traguardo, per il gioco, è semplicemente il nodo con <code>iFinishDist = 0</code> (sulla pista 1, il nodo 1).</li>
+        <li>Questo valore è <strong>fisso</strong>, non dipende da dove sei, è scritto nel file della pista.</li>
+        <li>Il gioco non fa un controllo rigoroso per il traguardo, cerca solo quando la tua distanza da esso, con <code>iFinishDist = 0</code> scatta il giro.</li>
     </ul>
 
     <h3 id="along" data-toc="Quanto hai percorso nel nodo">5.2 Quanto hai percorso dentro il nodo</h3>
-    <p>Il nodo ti dice quanto manca <em>dal suo centro</em>, ma tu non sei mai esattamente sul centro. Per correggere, il gioco misura quanto sei avanti rispetto al centro, lungo la direzione di marcia.</p>
+    <p>Il nodo in se non ti dice la tua posizione <em>esatta</em>, il nodo conosce solo la posizione del suo centro. Per correggere, il gioco traccia un vettore che inizia dal suo centro e finisce nel centro del nodo successivo.</p>
     <ul>
-        <li><strong>Direzione di marcia:</strong> una freccia che va dal centro del nodo al centro del successivo. Ai bivi (nodo con due successivi) è la media delle due frecce.</li>
-        <li><strong>Avanzamento:</strong> si prende la posizione della macchina rispetto al centro del nodo e si proietta sulla freccia (un prodotto scalare). Contano solo i metri in avanti: spostarti di lato non cambia il valore.</li>
+        <li><strong>Direzione di marcia:</strong> il vettore che va dal centro del nodo al centro del successivo. Ai bivi (nodo con due successivi) è la media delle due frecce.</li>
+        <li><strong>Avanzamento:</strong> è la quantità di strada che si somma all'iFinishDist del nodo per avere un valore più preciso su quanta strada hai percorso in totale rispetto alla sola distanza del nodo, l'avanzamento viene calcolato utilizzando un prodotto scalare per conteggiare solo l'avanzamento che segue la direzione di marcia.</li>
     </ul>
 
-    <figure class="fig" id="fig-along" data-img="img/figura-12.png" data-title="Avanzamento lungo la direzione del nodo" data-hint="Nodo con la freccia di direzione, macchina davanti al centro, linea di proiezione perpendicolare alla freccia. Evidenzia che lo spostamento laterale non conta.">
-        <figcaption>Si misura solo l’avanzamento lungo la freccia. Spostarsi di lato non cambia il numero.</figcaption>
+    <figure class="fig" id="fig-along">
+	<div class="frame">
+            <img src="img/figura-11.png" alt="Avanzamento">
+        </div>
+        <figcaption>La direzione di marcia (rosso), l'avanzamento (blu) e la distanza nodo-giocatore (nero). Da qui si nota come l'avanzamento è solo la "normalizzazione" della distanza lungo la direzione di marcia.</figcaption>
     </figure>
 
     <p>La distanza dal traguardo della macchina è quindi:</p>
@@ -268,9 +274,7 @@ se distanza_finale &lt; 0:  distanza_finale += nodeTotalDist                    
         <li>Se ce n’è più di uno, vince il centro più vicino.</li>
     </ol>
 
-    <figure class="fig" id="fig-global" data-img="img/figura-13.png" data-title="La fascia di 11000 unità attorno al nodo di partenza" data-hint="Pista con i nodi colorati in base a |iFinishDist - iFinishDist(partenza)| < 11000: la fascia verde contigua attorno al nodo di partenza, il resto grigio. Mostra che la fascia non è uguale al +15 della finestra.">
-        <figcaption>La ricerca per distanza considera tutti i nodi entro 11000 unità di distanza dal traguardo rispetto al nodo di partenza.</figcaption>
-    </figure>
+    <p>La ricerca per distanza considera tutti i nodi entro 11000 unità di distanza dal traguardo rispetto al nodo di partenza.</p>
 
     <div class="note code">
         <p><b>Differenza chiave.</b> La finestra conta <em>quanti nodi</em> ti separano dal nodo di partenza. La ricerca per distanza conta <em>quante unità di strada</em>. Non sono la stessa cosa: se i nodi sono radi, 11000 unità possono valere più di 15 nodi. Se sono fitti, meno.</p>
@@ -308,10 +312,6 @@ se distanza_finale &lt; 0:  distanza_finale += nodeTotalDist                    
 <!-- ===================== 7. TRAGUARDO E GIRI ===================== -->
 <section>
     <h2 id="giri-flag">7. Il traguardo è un’illusione</h2>
-
-    <figure class="fig" id="fig-line" data-img="img/figura-14.png" data-title="Traguardo disegnato e traguardo logico" data-hint="La striscia del traguardo disegnata sulla pista e, in sovrimpressione, il piano che passa per il centro del nodo con iFinishDist = 0. Possono non coincidere.">
-        <figcaption>La linea che vedi non è quella che il gioco controlla.</figcaption>
-    </figure>
 
     <p>Sulla pista c’è una striscia a scacchi, ma al gioco non interessa. Non esiste nessun sensore di collisione sulla linea. Per il gioco il giro è un numero: la tua distanza dal traguardo (<code>iFinishDist</code> della macchina), che scende a mano a mano che avanzi. Quando arrivi a 0 e superi il centro del nodo del traguardo, il numero <strong>salta da quasi zero a quasi il giro intero</strong>. Quel salto è il “traguardo” del gioco.</p>
 
