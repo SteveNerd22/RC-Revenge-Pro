@@ -280,6 +280,12 @@ section.soon .badge { font-family: var(--font-ui); font-size: .78rem; font-weigh
         <div><b>Track &amp; Lap Logic</b><small>Il sommario è una catena di AI Node</small></div>
         <button class="icon-btn" id="rail-close" title="Chiudi il sommario" aria-label="Chiudi il sommario">&times;</button>
     </div>
+    <div style="margin-bottom: 1.2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--line);">
+        <select id="lang-select" style="width: 100%; background: var(--surface-2); color: var(--text); border: 1px solid var(--line-strong); padding: 0.4rem 0.6rem; border-radius: 6px; font-family: var(--font-ui); cursor: pointer;">
+            <option value="it">🇮🇹 Italiano</option>
+            <option value="en">🇬🇧 English</option>
+        </select>
+    </div>
     <ol id="toc"></ol>
     <div class="rail-foot">
         <span><i style="background:var(--end)"></i>estremo</span>
@@ -321,90 +327,131 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (mobile()) body.classList.add('rail-closed');
     document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('#zoom').classList.remove('on'); if (mobile()) closeRail(); } });
 
-    /* ---- carica il contenuto ---- */
-    const container = $('#content-container');
-    try {
-        const res = await fetch('content.html?t=' + Date.now());
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        container.innerHTML = await res.text();
-    } catch (err) {
-        container.innerHTML = '<div id="error"><p><b>Non riesco a caricare <code>content.html</code>.</b></p>' +
-            '<p>Se hai aperto <code>index.html</code> con un doppio clic, il browser blocca il caricamento dei file. ' +
-            'Avvia un piccolo server nella cartella: <code>python -m http.server 8000</code> e apri <code>http://localhost:8000</code>.</p></div>';
-        console.error(err);
-        return;
+    /* ---- GESTIONE LINGUA ---- */
+    // Controlla se c'è una lingua salvata, altrimenti di default usa 'it' (o 'en')
+    let currentLang = localStorage.getItem('doc_lang') || 'it';
+    const langSelect = $('#lang-select');
+    if (langSelect) langSelect.value = currentLang;
+
+    async function loadContent(lang) {
+        const container = $('#content-container');
+        container.innerHTML = '<p id="loading">Carico il contenuto…</p>';
+        
+        // Sceglie il file in base alla lingua (es. content.html o content-en.html)
+        const fileName = lang === 'en' ? 'content-en.html' : 'content.html';
+
+        try {
+            const res = await fetch(fileName + '?t=' + Date.now());
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            container.innerHTML = await res.text();
+            
+            // Una volta caricato il contenuto, rieseguiamo le funzioni della pagina
+            initPageLogic();
+        } catch (err) {
+            container.innerHTML = '<div id="error"><p><b>Non riesco a caricare <code>' + fileName + '</code>.</b></p>' +
+                '<p>Assicurati che il file esista nel repository.</p></div>';
+            console.error(err);
+        }
     }
 
-    /* ---- figure: numerazione e gestione zoom ---- */
-    const figs = $$('figure.fig', container);
-    const figNum = {};
-    figs.forEach((fig, i) => {
-        const n = i + 1;
-        figNum[fig.id] = n;
-        
-        // Aggiunge la numerazione "Figura X" al figcaption
-        const cap = $('figcaption', fig);
-        if (cap && !cap.querySelector('.fig-n')) {
-            cap.insertAdjacentHTML('afterbegin', '<span class="fig-n">Figura ' + n + ' </span>');
-        }
-
-        // Se è presente un'immagine <img>, gestisce lo zoom al click
-        const img = $('img', fig);
-        if (img) {
-            img.addEventListener('click', () => {
-                $('#zoom img').src = img.src;
-                $('#zoom').classList.add('on');
-            });
-        }
-    });
-
-    // Aggiorna i collegamenti nel testo (<a class="fref">)
-    $$('a.fref', container).forEach(a => {
-        const id = a.getAttribute('href').slice(1);
-        if (figNum[id]) a.textContent = 'Figura ' + figNum[id];
-    });
-
-    // Chiude lo zoom cliccando in qualsiasi punto dell'overlay
-    $('#zoom').addEventListener('click', () => $('#zoom').classList.remove('on'));
-
-    /* ---- sommario come catena di nodi ---- */
-    const toc = $('#toc');
-    const heads = $$('h2[id], h3[id]', container);
-    const items = heads.map(h => {
-        const li = document.createElement('li');
-        li.className = h.tagName === 'H3' ? 'l3' : 'l2';
-        if (h.closest('section.soon')) li.classList.add('soon');
-        const a = document.createElement('a');
-        a.href = '#' + h.id;
-        a.innerHTML = '<span class="gate"></span><span class="t"></span>';
-        $('.t', a).textContent = h.dataset.toc || h.textContent;
-        li.appendChild(a);
-        toc.appendChild(li);
-        const link = document.createElement('a');       // ancora per copiare il link alla sezione
-        link.className = 'anchor'; link.href = '#' + h.id; link.textContent = '#'; link.setAttribute('aria-label', 'Link a questa sezione');
-        h.appendChild(link);
-        a.addEventListener('click', () => { if (mobile()) closeRail(); });
-        return { h, li };
-    });
-
-    /* ---- progresso di lettura e "sei qui" ---- */
-    const lap = $('#lap i');
-    let ticking = false;
-    function update() {
-        ticking = false;
-        const max = document.documentElement.scrollHeight - innerHeight;
-        lap.style.transform = 'scaleX(' + (max > 0 ? Math.min(1, scrollY / max) : 0) + ')';
-        let cur = -1;
-        items.forEach((it, i) => { if (it.h.getBoundingClientRect().top <= 140) cur = i; });
-        items.forEach((it, i) => {
-            it.li.classList.toggle('active', i === cur);
-            it.li.classList.toggle('visited', i < cur);
+    // Se l'utente cambia lingua dal menu a tendina
+    if (langSelect) {
+        langSelect.addEventListener('change', (e) => {
+            currentLang = e.target.value;
+            localStorage.setItem('doc_lang', currentLang);
+            loadContent(currentLang);
         });
     }
-    addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
-    addEventListener('resize', update);
-    update();
-    if (location.hash) { const t = document.getElementById(location.hash.slice(1)); if (t) t.scrollIntoView(); }
+
+    /* ---- LOGICA DELLA PAGINA (Figure, TOC, Scroll) ---- */
+    function initPageLogic() {
+        const container = $('#content-container');
+        
+        // Figure: numerazione e zoom
+        const figs = $$('figure.fig', container);
+        const figNum = {};
+        figs.forEach((fig, i) => {
+            const n = i + 1;
+            figNum[fig.id] = n;
+            const cap = $('figcaption', fig);
+            if (cap && !cap.querySelector('.fig-n')) {
+                // Traduce "Figura" o "Figure" dinamicamente in base alla lingua
+                const figWord = currentLang === 'en' ? 'Figure' : 'Figura';
+                cap.insertAdjacentHTML('afterbegin', '<span class="fig-n">' + figWord + ' ' + n + ' </span>');
+            }
+            const img = $('img', fig);
+            if (img) {
+                img.addEventListener('click', () => {
+                    $('#zoom img').src = img.src;
+                    $('#zoom').classList.add('on');
+                });
+            }
+        });
+
+        $$('a.fref', container).forEach(a => {
+            const id = a.getAttribute('href').slice(1);
+            if (figNum[id]) {
+                const figWord = currentLang === 'en' ? 'Figure' : 'Figura';
+                a.textContent = figWord + ' ' + figNum[id];
+            }
+        });
+
+        // Ricostruisce il sommario (TOC)
+        const toc = $('#toc');
+        toc.innerHTML = ''; // Pulisce il vecchio sommario se si cambia lingua
+        const heads = $$('h2[id], h3[id]', container);
+        const items = heads.map(h => {
+            const li = document.createElement('li');
+            li.className = h.tagName === 'H3' ? 'l3' : 'l2';
+            if (h.closest('section.soon')) li.classList.add('soon');
+            const a = document.createElement('a');
+            a.href = '#' + h.id;
+            a.innerHTML = '<span class="gate"></span><span class="t"></span>';
+            $('.t', a).textContent = h.dataset.toc || h.textContent;
+            li.appendChild(a);
+            toc.appendChild(li);
+            
+            // Evita di duplicare l'ancora se ricarichi la lingua
+            if (!h.querySelector('.anchor')) {
+                const link = document.createElement('a');
+                link.className = 'anchor'; link.href = '#' + h.id; link.textContent = '#'; link.setAttribute('aria-label', 'Link a questa sezione');
+                h.appendChild(link);
+            }
+            
+            a.addEventListener('click', () => { if (mobile()) closeRail(); });
+            return { h, li };
+        });
+
+        // Progresso di lettura e "sei qui"
+        const lap = $('#lap i');
+        let ticking = false;
+        function update() {
+            ticking = false;
+            const max = document.documentElement.scrollHeight - innerHeight;
+            lap.style.transform = 'scaleX(' + (max > 0 ? Math.min(1, scrollY / max) : 0) + ')';
+            let cur = -1;
+            items.forEach((it, i) => { if (it.h.getBoundingClientRect().top <= 140) cur = i; });
+            items.forEach((it, i) => {
+                it.li.classList.toggle('active', i === cur);
+                it.li.classList.toggle('visited', i < cur);
+            });
+        }
+        
+        window.removeEventListener('scroll', window._scrollHandler);
+        window._scrollHandler = () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } };
+        addEventListener('scroll', window._scrollHandler, { passive: true });
+        update();
+        
+        if (location.hash) { 
+            const t = document.getElementById(location.hash.slice(1)); 
+            if (t) t.scrollIntoView(); 
+        }
+    }
+
+    $('#zoom').addEventListener('click', () => $('#zoom').classList.remove('on'));
+
+    // Carica il contenuto iniziale all'avvio
+    loadContent(currentLang);
 });
 </script>
 </body>
