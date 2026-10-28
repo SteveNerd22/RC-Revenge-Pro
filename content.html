@@ -28,7 +28,7 @@
     <h2 id="ai-nodes">1. AI Node</h2>
 
     <figure class="fig" id="fig-node">
-    	<div class="frame">
+        <div class="frame">
             <img src="img/figura-01.png" alt="AI Node">
         </div>
         <figcaption>Un AI Node isolato: due estremi (rossi) e un centro (blu).</figcaption>
@@ -45,7 +45,7 @@
     <p>Gli AI Node non sono tutti uguali. Oltre alle dimensioni e all’orientamento, ogni nodo ha un numero da <strong>0 a 10</strong> chiamato <code>priority</code>. Nello script di export a ogni priority corrisponde un colore. Quasi tutte regolano le scelte delle macchine CPU, ma alcune hanno effetto anche sul giocatore.</p>
 
     <figure class="fig" id="fig-types">
-    	<div class="frame">
+        <div class="frame">
             <img src="img/figura-02.png" alt="AI Node Types">
         </div>
         <figcaption>I tipi di nodo si riconoscono dal colore nell’export.</figcaption>
@@ -61,7 +61,7 @@
             <tr><td>4</td><td><span class="chip"><i style="background:#3366ff"></i>blu</span></td><td>Scorciatoia / coppe</td><td>La scelta dipende da classifica e coppa. Nelle coppe alte lo prendono tutte.</td><td><span class="who">CPU</span></td></tr>
             <tr><td>5</td><td><span class="chip"><i style="background:#ff1a1a"></i>rosso</span></td><td>Divieto CPU</td><td>La CPU evita sempre questo ramo.</td><td><span class="who">CPU</span></td></tr>
             <tr><td>6 – 9</td><td><span class="chip"><i style="background:#ffbf66"></i>arancio → <i style="background:#991a00"></i>marrone</span></td><td>Limite manetta</td><td>Limita il gas della CPU a una percentuale fissa: 75% (6), 50% (7), 25% (8), 12% (9).</td><td><span class="who">CPU</span></td></tr>
-            <tr><td>10</td><td><span class="chip"><i style="background:#ff33ff"></i>viola</span></td><td>Checkpoint speciale</td><td>Passarci accende il flag che permette di contare il giro (non sembrerebbe essere presente in nessuna delle piste) (<a href="#giri-flag">sezione 7</a>).</td><td><span class="who player">giocatore</span></td></tr>
+            <tr><td>10</td><td><span class="chip"><i style="background:#ff33ff"></i>viola</span></td><td>Checkpoint speciale</td><td>Passarci accende il flag che permette di contare il giro (<a href="#giri-flag">sezione 7</a>). Nelle piste controllate finora (per esempio la 1 e la 14) non c’è nessun nodo di questo tipo.</td><td><span class="who player">giocatore</span></td></tr>
         </tbody>
     </table></div>
 
@@ -75,7 +75,7 @@
     <h2 id="node-zones">2. Le zone dei nodi</h2>
 
     <figure class="fig" id="fig-zone">
-	<div class="frame">
+        <div class="frame">
             <img src="img/figura-03.png" alt="Zone">
         </div>
         <figcaption>La zona di un nodo: una scatola che avvolge il tratto fino al nodo successivo.</figcaption>
@@ -86,12 +86,12 @@
         <li><strong>sul terreno</strong>, un rettangolo che contiene gli estremi del nodo e quelli del nodo successivo;</li>
         <li><strong>in altezza</strong>, una fascia di 400 unità sopra e 400 sotto il centro del nodo.</li>
     </ul>
-    <p>Conta solo il <strong>centro della macchina</strong>: se è dentro la scatola, sei “nella zona”. Stare esattamente sul bordo non vale.</p>
+    <p>Conta solo il <strong>centro della macchina</strong>: se è dentro la scatola, sei “nella zona”. Stare esattamente sul bordo non vale (nella ricerca locale).</p>
 
     <p>Le zone <strong>si sovrappongono</strong> parecchio, soprattutto in zone con ostacoli in mezzo al tracciato. In un dato momento puoi essere dentro più zone insieme.</p>
 
     <figure class="fig" id="fig-overlap">
-	<div class="frame">
+        <div class="frame">
             <img src="img/figura-04.png" alt="Zone affollate">
         </div>
         <figcaption>Le zone si sovrappongono. Qui la macchina è dentro tre zone.</figcaption>
@@ -111,7 +111,7 @@
         <li><strong>Guida della CPU:</strong> sterzata, traiettoria, scelta di bivi e scorciatoie.</li>
         <li><strong>Contromano e recupero:</strong> se vai nel verso sbagliato, il gioco guarda i nodi vicini al tuo.</li>
     </ul>
-    <p>Per il giocatore il nodo corrente viene ricalcolato a ogni esecuzione di <code>PlayerControl</code> (la funzione che governa la macchina del giocatore), cioè ogni 20 unità di tempo. Il metodo è la <strong>ricerca locale</strong>: il gioco non guarda tutta la pista, ma solo i nodi attorno all’ultimo nodo noto.</p>
+    <p>Per il giocatore il nodo corrente viene ricalcolato a ogni esecuzione di <code>PlayerControl</code> (la funzione che governa la macchina del giocatore), che il gioco rischedula ogni <code>0x14</code> unità di tempo (l’unità esatta non è stata verificata). Il metodo è la <strong>ricerca locale</strong>: il gioco non guarda tutta la pista, ma solo i nodi attorno all’ultimo nodo noto.</p>
 
     <h3 id="search-window" data-toc="La finestra di ricerca">3.1 La finestra di ricerca</h3>
     <p>L’insieme dei nodi che il gioco controlla si chiama <dfn class="term" tabindex="0" data-def="I nodi che il gioco prende in considerazione a ogni aggiornamento: pochi dietro e pochi avanti al nodo corrente.">finestra di ricerca</dfn>. La scansione è fatta da due funzioni ricorsive: <code>AINodeBackTrackRecursive</code> per i nodi precedenti e <code>AINodeForwardTrackRecursive</code> per i successivi. Per il giocatore la finestra è questa:</p>
@@ -124,10 +124,10 @@
         </tbody>
     </table></div>
 
-    <p>Sono 23 nodi (1 corrente, 7 indietro e 15 avanti) su un tratto senza bivi. Ai bivi la finestra conta i passi lungo ciascun ramo: puoi esaminare più nodi in totale, ma sempre entro 7 passi indietro e 15 avanti su ognuno.</p>
+    <p>Sono 23 nodi (1 corrente, 7 indietro e 15 avanti) su un tratto senza bivi né rientri. Ai bivi la finestra conta i passi lungo ciascun ramo: puoi esaminare più nodi in totale, ma sempre entro 7 passi indietro e 15 avanti su ognuno.</p>
 
     <figure class="fig" id="fig-window">
-	<div class="frame">
+        <div class="frame">
             <img src="img/figura-05.png" alt="Vista zone evidenziate">
         </div>
         <figcaption>La finestra del giocatore: 1 zona corrente [verde], 7 indietro [blu], 15 avanti [rosso]. 23 zone in tutto su un tratto senza bivi.</figcaption>
@@ -144,7 +144,11 @@ psVar4-&gt;iRange = 0x10;
 AINodeForwardTrackRecursive(pCurNode, 0x10); // da 0 a +15</code></pre>
 
     <div class="note code">
-        <p><b>La prova.</b> Ho riprodotto le tre funzioni riga per riga e contato i nodi realmente esaminati: risultano esattamente da −7 a +15, senza buchi, in totale 23.</p>
+        <p><b>La prova.</b> Ho riprodotto le tre funzioni riga per riga e contato i nodi realmente esaminati: su un tratto senza bivi né rientri risultano esattamente da −7 a +15, senza buchi, in totale 23.</p>
+    </div>
+
+    <div class="note code">
+        <p><b>Attenzione ai rientri.</b> Il conto “−7 e +15, 23 nodi” vale solo dove la pista è una catena semplice. Dove due strade si ricongiungono (un nodo con due precedenti), la parte all’indietro della ricerca entra anche nell’altra strada, e nella finestra finiscono nodi che non sono “poco dietro” a te ma stanno su un’altra strada. Esempio, pista 14, nodo 225: nei passi da 0 a +4 compaiono anche i nodi 203–207, di una strada parallela tra circa 430 e 900 unità più in basso, che rientra nel nodo 208. La finestra è quindi una lista di <em>candidati</em>: quelli che poi contano sono solo quelli la cui zona contiene la macchina (sezione 2, con la fascia di ±400 in altezza), e la strada più bassa viene in gran parte scartata. Il confronto in altezza usa il centro del nodo, quindi è approssimato.</p>
     </div>
 
     <h3 id="overlaps" data-toc="Zone sovrapposte">3.2 Quando le zone si sovrappongono</h3>
@@ -167,7 +171,7 @@ AINodeForwardTrackRecursive(pCurNode, 0x10); // da 0 a +15</code></pre>
 
     <h3 id="ex-canyon" data-toc="Esempio 1: Calamity Canyon">Esempio 1: Calamity Canyon (l’incrocio)</h3>
     <figure class="fig" id="fig-ex1">
-	<div class="frame">
+        <div class="frame">
             <img src="img/figura-06.png" alt="Zone in Calamity Canyon">
         </div>
         <figcaption>Calamity Canyon: l’incrocio unisce due punti della catena molto distanti tra loro.</figcaption>
@@ -176,16 +180,16 @@ AINodeForwardTrackRecursive(pCurNode, 0x10); // da 0 a +15</code></pre>
 
     <h3 id="ex-summer" data-toc="Esempio 2: I Know What You Drove">Esempio 2: “I Know What You Drove Last Summer”</h3>
     <figure class="fig" id="fig-ex2">
-	<div class="frame">
+        <div class="frame">
             <img src="img/figura-07.png" alt="Zone in IKWYDLS">
         </div>
         <figcaption>Lo skip atterra nell’ultima zona utile della finestra.</figcaption>
     </figure>
-    <p>È lo skip del <a href="https://www.speedrun.com/rc_revenge_pro/runs/y8kqlgxy" target="_blank" rel="noopener">record di cocodoggo</a> su questa pista. Atterrando, la macchina aggancia la <strong>sedicesima zona</strong> (partenza + 15), l’ultima utile, in viola. Il margine residuo è di 2 zone: con due zone in più nel tratto tagliato la ricerca locale non avrebbe visto l’atterraggio.</p>
+    <p>È lo skip del <a href="https://www.speedrun.com/rc_revenge_pro/runs/y8kqlgxy" target="_blank" rel="noopener">record di cocodoggo</a> su questa pista. Atterrando, la macchina aggancia la <strong>sedicesima zona</strong> (partenza + 15), l’ultima utile, in viola. Non c’è margine: con una sola zona in più nel tratto tagliato la ricerca locale non avrebbe visto l’atterraggio.</p>
 
     <h3 id="ex-cars" data-toc="Esempio 3: Cars Attacks Again">Esempio 3: “Cars Attacks! Again!”</h3>
     <figure class="fig" id="fig-ex3">
-	<div class="frame">
+        <div class="frame">
             <img src="img/figura-08.png" alt="Zone in Cars Attacks Again">
         </div>
         <figcaption>Zone semitrasparenti, perché con materiali opachi il tratto è illeggibile.</figcaption>
@@ -194,7 +198,7 @@ AINodeForwardTrackRecursive(pCurNode, 0x10); // da 0 a +15</code></pre>
 
     <h3 id="ex-lost" data-toc="Esempio 4: oltre la finestra">Esempio 4: oltre la finestra</h3>
     <figure class="fig" id="fig-ex4">
-	<div class="frame">
+        <div class="frame">
             <img src="img/figura-09.png" alt="ISKWYDLS">
         </div>
         <figcaption>La macchina atterra subito dopo l’ultima zona rossa: la finestra non la vede.</figcaption>
@@ -212,7 +216,7 @@ AINodeForwardTrackRecursive(pCurNode, 0x10); // da 0 a +15</code></pre>
     <p>Finora abbiamo visto <em>dove</em> sei (il nodo). Il gioco però vuole sapere anche <em>quanta strada ti resta</em>, perché è da questo numero che ricava giri e classifica. Per farlo ogni nodo porta con sé un valore.</p>
 
     <figure class="fig" id="fig-fdist">
-	<div class="frame">
+        <div class="frame">
             <img src="img/figura-10.png" alt="Node distance">
         </div>
         <figcaption>Ogni nodo sa quanta strada manca al traguardo.</figcaption>
@@ -223,21 +227,21 @@ AINodeForwardTrackRecursive(pCurNode, 0x10); // da 0 a +15</code></pre>
     <p>Due conseguenze importanti:</p>
     <ul>
         <li>Questo valore è <strong>fisso</strong>, non dipende da dove sei, è scritto nel file della pista.</li>
-        <li>Il gioco non fa un controllo rigoroso per il traguardo, cerca solo quando la tua distanza da esso, con <code>iFinishDist = 0</code> scatta il giro.</li>
+        <li>Il gioco non controlla mai se hai toccato il traguardo: guarda come cambia la tua distanza da un aggiornamento al successivo (<a href="#giri-flag">sezione 7</a>).</li>
     </ul>
 
-    <h3 id="along" data-toc="Quanto hai percorso nel nodo">5.2 Quanto hai percorso dentro il nodo</h3>
-    <p>Il nodo in se non ti dice la tua posizione <em>esatta</em>, il nodo conosce solo la posizione del suo centro. Per correggere, il gioco traccia un vettore che inizia dal suo centro e finisce nel centro del nodo successivo.</p>
+    <h3 id="along" data-toc="Quanto hai percorso nel nodo">5.2 Quanto sei avanti dentro il nodo</h3>
+    <p>Il nodo in sé non ti dice la tua posizione <em>esatta</em>: conosce solo il suo centro. Per correggere, il gioco misura quanto sei avanti rispetto a quel centro, lungo la direzione di marcia del nodo.</p>
     <ul>
-        <li><strong>Direzione di marcia:</strong> il vettore che va dal centro del nodo al centro del successivo. Ai bivi (nodo con due successivi) è la media delle due frecce.</li>
-        <li><strong>Avanzamento:</strong> è la quantità di strada che si somma all'iFinishDist del nodo per avere un valore più preciso su quanta strada hai percorso in totale rispetto alla sola distanza del nodo, l'avanzamento viene calcolato utilizzando un prodotto scalare per conteggiare solo l'avanzamento che segue la direzione di marcia.</li>
+        <li><strong>Direzione di marcia:</strong> una direzione già memorizzata nel nodo (<code>svForwardDir</code>). Ai bivi (nodo con due successivi) è la media delle due direzioni, che non viene riportata a lunghezza 1. Come viene calcolata la direzione memorizzata non è stato verificato.</li>
+        <li><strong>Avanzamento:</strong> il vettore che va dal centro del nodo alla macchina viene moltiplicato (prodotto scalare) per la direzione di marcia, così conta solo la parte di spostamento che segue la direzione. È positivo se sei oltre il centro del nodo, negativo se sei prima. Il gioco lo <strong>sottrae</strong> all’<code>iFinishDist</code> del nodo, per avere un valore più preciso della sola distanza del nodo.</li>
     </ul>
 
     <figure class="fig" id="fig-along">
-	<div class="frame">
+        <div class="frame">
             <img src="img/figura-11.png" alt="Avanzamento">
         </div>
-        <figcaption>La direzione di marcia (rosso), l'avanzamento (blu) e la distanza nodo-giocatore (nero). Da qui si nota come l'avanzamento è solo la "normalizzazione" della distanza lungo la direzione di marcia.</figcaption>
+        <figcaption>La direzione di marcia (rosso), l'avanzamento (blu) e la distanza nodo-giocatore (nero). Da qui si nota come l'avanzamento sia solo la parte della distanza che sta lungo la direzione di marcia.</figcaption>
     </figure>
 
     <p>La distanza dal traguardo della macchina è quindi:</p>
@@ -245,8 +249,12 @@ AINodeForwardTrackRecursive(pCurNode, 0x10); // da 0 a +15</code></pre>
 distanza_finale = nodo.iFinishDist - avanzamento                                  // AINodeUpdateFinishDistance
 se distanza_finale &lt; 0:  distanza_finale += nodeTotalDist                        // sei oltre il traguardo: giro nuovo</code></pre>
 
+    <div class="note code">
+        <p><b>Limiti.</b> In <code>AINodeDistanceAlong</code> e in <code>AINodeUpdateFinishDistance</code> non c’è nessun tetto all’avanzamento: il valore viene sottratto così com’è. Il calcolo è in 3D (conta anche l’altezza, quindi salite e discese), la posizione della macchina è la posizione fisica divisa per 256 e la differenza dal centro del nodo è tenuta in 16 bit con segno. L’avanzamento resta piccolo solo perché di norma il nodo corrente è quello la cui zona contiene la macchina. Se la macchina esce da ogni zona e resta il nodo vecchio (sezione 6.2), l’avanzamento può diventare molto grande.</p>
+    </div>
+
     <div class="note hyp">
-        <p><b>Ipotesi.</b> Il risultato del prodotto scalare viene dal processore grafico della PS2 (GTE) in virgola fissa, e la scala esatta non è verificata: assumo che sia riportata alle stesse unità delle posizioni. L’idea (avanzamento lungo la direzione) è sicura, il fattore numerico no.</p>
+        <p><b>Ipotesi.</b> Il risultato del prodotto scalare viene dal processore grafico della PS2 (GTE) in virgola fissa, e la scala esatta non è verificata: assumo che sia riportata alle stesse unità delle posizioni. Non so se il risultato venga diviso per 4096 (la direzione in virgola fissa ha lunghezza 4096), né se le funzioni del GTE lo limitino a 16 bit. Servirebbero <code>PS2C_SetGteMatrixForDotProduct</code>, <code>PS2C_GteMatrixMulVec16</code> e <code>PS2C_GetDotProductResult</code>. L’idea (avanzamento lungo la direzione) è sicura, il fattore numerico no.</p>
     </div>
 
     <h3 id="raced" data-toc="Distanza percorsa">5.3 Distanza rimanente e distanza percorsa</h3>
@@ -270,14 +278,12 @@ se distanza_finale &lt; 0:  distanza_finale += nodeTotalDist                    
     <ol>
         <li>Prende il valore <code>iFinishDist</code> del <strong>nodo che avevi prima</strong> (<code>pPrevValidNode</code>, copia dell’ultimo nodo corrente).</li>
         <li>Scorre <strong>tutti i nodi della pista</strong> e tiene solo quelli il cui <code>iFinishDist</code> differisce da quello meno di <strong>11000 unità</strong>, in avanti o all’indietro.</li>
-        <li>Tra questi, considera solo quelli la cui zona contiene la macchina (stessa regola di prima, con altezza ±400 e stessa superficie: acqua o terra).</li>
+        <li>Tra questi, considera solo quelli la cui zona contiene la macchina (stessa regola di prima, con altezza ±400 e stessa superficie: acqua o terra; qui, dalla lettura del codice, i bordi del rettangolo contano anche se ci stai sopra).</li>
         <li>Se ce n’è più di uno, vince il centro più vicino.</li>
     </ol>
 
-    <p>La ricerca per distanza considera tutti i nodi entro 11000 unità di distanza dal traguardo rispetto al nodo di partenza.</p>
-
     <div class="note code">
-        <p><b>Differenza chiave.</b> La finestra conta <em>quanti nodi</em> ti separano dal nodo di partenza. La ricerca per distanza conta <em>quante unità di strada</em>. Non sono la stessa cosa: se i nodi sono radi, 11000 unità possono valere più di 15 nodi. Se sono fitti, meno.</p>
+        <p><b>Differenza chiave.</b> La finestra conta <em>quanti nodi</em> ti separano dal nodo di partenza. La ricerca per distanza conta <em>quante unità di strada</em>. Non sono la stessa cosa: se i nodi sono radi (lontani tra loro), 11000 unità valgono meno di 15 nodi. Se sono fitti, valgono di più. Sulla pista 1, con nodi mediamente a circa 900 unità l’uno dall’altro, 11000 unità sono circa 12 nodi.</p>
     </div>
 
     <h3 id="global-lost" data-toc="Se non trova nulla">6.2 Se non trova nulla</h3>
@@ -298,14 +304,14 @@ se distanza_finale &lt; 0:  distanza_finale += nodeTotalDist                    
     </div>
 
     <h3 id="global-examples" data-toc="Effetto sugli esempi">6.3 Cosa cambia per gli esempi</h3>
-    <p>Questo cambia, potenzialmente, la lettura degli esempi della sezione 4. Un atterraggio oltre la sedicesima zona <em>non</em> viene necessariamente perso: viene riagganciato dalla ricerca per distanza se il nodo di atterraggio ha un <code>iFinishDist</code> entro 11000 da quello di partenza.</p>
+    <p>Questo cambia, potenzialmente, la lettura degli esempi della sezione 4. Un atterraggio oltre la sedicesima zona <em>non</em> viene necessariamente perso: viene riagganciato dalla ricerca per distanza se il nodo di atterraggio ha un <code>iFinishDist</code> entro 11000 da quello di partenza e se la sua zona contiene la macchina.</p>
     <ul>
-        <li><strong>Esempio 2 (Calamity Canyon).</strong> I due punti dell’incrocio sono lontani nella catena, quindi anche in <code>iFinishDist</code>: la differenza è molto più di 11000. Sia la finestra sia la ricerca per distanza li escludono, ed è questo che impedisce il salto.</li>
-        <li><strong>Esempi 3 e 4.</strong> Atterrano sulla sedicesima zona, quindi li prende già la finestra. La ricerca per distanza non serve.</li>
-        <li><strong>Esempio 5.</strong> Atterra appena oltre la sedicesima: la finestra fallisce, ma la ricerca per distanza potrebbe riagganciare. Dipende dal valore di <code>iFinishDist</code> del nodo di atterraggio rispetto a quello di partenza.</li>
+        <li><strong>Esempio 1 (Calamity Canyon).</strong> I due punti dell’incrocio sono lontani nella catena, quindi, con ogni probabilità, anche in <code>iFinishDist</code>: la differenza dovrebbe essere molto più di 11000. In quel caso sia la finestra sia la ricerca per distanza li escludono, ed è questo che impedisce il salto.</li>
+        <li><strong>Esempi 2 e 3.</strong> Atterrano sulla sedicesima zona, quindi li prende già la finestra. La ricerca per distanza non serve.</li>
+        <li><strong>Esempio 4.</strong> Atterra appena oltre la sedicesima: la finestra fallisce, ma la ricerca per distanza potrebbe riagganciare. Dipende dal valore di <code>iFinishDist</code> del nodo di atterraggio rispetto a quello di partenza.</li>
     </ul>
     <div class="note hyp">
-        <p><b>Non ancora verificato.</b> Per sapere cosa succede davvero in ogni esempio serve confrontare gli <code>iFinishDist</code> dei nodi di partenza e di atterraggio. Finché non lo facciamo, le conclusioni sugli esempi 2 e 5 sono ipotesi.</p>
+        <p><b>Non ancora verificato.</b> Per sapere cosa succede davvero in ogni esempio serve confrontare gli <code>iFinishDist</code> dei nodi di partenza e di atterraggio. Finché non lo facciamo, le conclusioni sugli esempi 1 e 4 sono ipotesi.</p>
     </div>
 </section>
 
@@ -316,16 +322,25 @@ se distanza_finale &lt; 0:  distanza_finale += nodeTotalDist                    
     <p>Sulla pista c’è una striscia a scacchi, ma al gioco non interessa. Non esiste nessun sensore di collisione sulla linea. Per il gioco il giro è un numero: la tua distanza dal traguardo (<code>iFinishDist</code> della macchina), che scende a mano a mano che avanzi. Quando arrivi a 0 e superi il centro del nodo del traguardo, il numero <strong>salta da quasi zero a quasi il giro intero</strong>. Quel salto è il “traguardo” del gioco.</p>
 
     <h3 id="giri-regole" data-toc="Quando conta un giro">7.1 Quando conta un giro</h3>
-    <p>A ogni aggiornamento il gioco confronta la nuova distanza con quella dell’aggiornamento precedente:</p>
+    <p>A ogni aggiornamento il gioco confronta la nuova distanza con quella dell’aggiornamento precedente. Quella “di prima” non viene ricavata da niente di speciale: è il valore che il gioco aveva calcolato e salvato nella macchina all’aggiornamento precedente, e che sovrascrive subito dopo i controlli.</p>
     <div class="table-wrap"><table>
         <thead><tr><th>Cosa succede alla distanza</th><th>Soglia (pista 1)</th><th>Che cosa significa</th></tr></thead>
         <tbody>
             <tr><td>Sale di colpo di <strong>più di <code>nodeTotalDist − 6000</code></strong></td><td>oltre 125008</td><td>Hai passato il traguardo <strong>in avanti</strong>. Il giro conta solo se il flag è acceso.</td></tr>
             <tr><td>Scende di colpo di <strong>più di <code>nodeTotalDist − 4500</code></strong></td><td>oltre 126508</td><td>Hai passato il traguardo <strong>all’indietro</strong> (sei tornato prima della linea).</td></tr>
-            <tr><td>Qualsiasi altro cambiamento</td><td></td><td>Marcia normale: nessun giro.</td></tr>
+            <tr><td>Qualsiasi altro cambiamento</td><td></td><td>Marcia normale: nessun giro. Ci rientrano anche i salti che portano oltre la linea percorrendo troppa strada (più di 6000 unità in avanti, più di 4500 all’indietro).</td></tr>
         </tbody>
     </table></div>
     <p>Notare che le soglie guardano <em>il salto del numero</em>, non cosa hai fatto con la macchina. Il gioco non sa se sei passato davvero dalla linea: sa solo che la tua distanza è saltata da quasi 0 a quasi il giro intero.</p>
+
+    <h4>Cosa sono il 6000 e il 4500</h4>
+    <p>Non sono salti che devi fare: sono dei <strong>margini</strong>. Il salto del numero è quasi un giro intero, e la strada che hai percorso davvero tra i due aggiornamenti è la differenza:</p>
+<pre><code>strada_percorsa = nodeTotalDist - salto_del_numero</code></pre>
+    <p>Esempio sulla pista 1 (<code>nodeTotalDist</code> = 131008): prima mancano 50, adesso ne mancano 130900. Il numero è salito di 130850, che è più di 125008, quindi il traguardo è riconosciuto. La strada percorsa tra i due aggiornamenti è 131008 − 130850 = 158 unità, meno di 6000.</p>
+    <p>In altre parole: il traguardo in avanti viene riconosciuto solo se tra i due aggiornamenti hai percorso <strong>meno di 6000 unità di strada</strong> a cavallo della linea (meno di 4500 all’indietro). Se ne percorri di più, per esempio con uno skip che ti porta oltre la linea, non scatta né il ramo in avanti né quello all’indietro: il giro non conta e, siccome la distanza salvata viene comunque aggiornata, non c’è un secondo tentativo.</p>
+    <div class="note hyp">
+        <p><b>Da verificare.</b> Non so quanta strada si percorra davvero tra due aggiornamenti in gara: dipende dall’unità del tempo (<code>0x14</code>) e dalla scala dell’avanzamento (sezione 5.2).</p>
+    </div>
 
     <h3 id="giri-flag-2" data-toc="Il flag">7.2 Il flag che autorizza il giro</h3>
     <p>Se bastasse il salto, potresti passare avanti e indietro sulla linea e contare giri a ogni passaggio. Per evitarlo c’è un flag interno, <code>iHalfLapDone</code> (“mezzo giro fatto”). Il giro viene contato solo se il flag è acceso, e appena contato il giro il flag si spegne.</p>
@@ -376,9 +391,9 @@ se distanza_finale &lt; 0:  distanza_finale += nodeTotalDist                    
 
     <h3 id="giri-trucchi" data-toc="Cosa puoi fare">7.5 Cosa significa per le scorciatoie</h3>
     <ul>
-        <li>Un giro conta perché il numero salta, non perché passi dalla linea. Se la distanza salta in avanti oltre la soglia con il flag acceso, il giro vale, anche se non sei nel punto del traguardo disegnato.</li>
-        <li>Tagliare una parte di pista con un salto di nodi (entro le regole delle sezioni 3 e 6) non è visto come un problema: il gioco misura la distanza, non il percorso fatto.</li>
-        <li>Per ottenere un giro bisogna comunque arrivare all’ultimo quarto del giro (o toccare un nodo di priority 10), poi saltare oltre la soglia del traguardo.</li>
+        <li>Un giro conta perché il numero salta, non perché passi dalla linea. Se la distanza salta in avanti oltre la soglia (cioè se tra i due aggiornamenti hai percorso meno di 6000 unità a cavallo della linea) e il flag è acceso, il giro vale, anche se non sei nel punto del traguardo disegnato.</li>
+        <li>Tagliare una parte di pista con un salto di nodi (entro le regole delle sezioni 3 e 6) non è visto come un problema: il gioco misura la distanza, non il percorso fatto. Un salto che ti porta oltre la linea percorrendo più di 6000 unità in un solo aggiornamento, però, non viene riconosciuto come traguardo e non c’è un secondo tentativo.</li>
+        <li>Per ottenere un giro bisogna comunque arrivare all’ultimo quarto del giro (o toccare un nodo di priority 10), poi attraversare la linea con uno spostamento sotto il margine.</li>
     </ul>
     <div class="note hyp">
         <p><b>Da verificare.</b> Queste conseguenze vengono dalla lettura del codice e non le ho provate in gioco.</p>
