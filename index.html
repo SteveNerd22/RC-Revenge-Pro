@@ -44,6 +44,34 @@ body {
     min-height: 100vh;
     transition: grid-template-columns .25s ease;
 }
+
+.goog-te-banner-frame {
+    display: none !important;
+}
+/* Stile pulito per il selettore di Google integrato nella tua UI */
+.goog-te-combo {
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--line-strong);
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    font-family: var(--font-ui);
+    font-size: 0.85rem;
+    width: 100%;
+    cursor: pointer;
+}
+.goog-te-combo:focus {
+    outline: 2px solid var(--accent);
+}
+/* Nasconde il brand testuale "Tradotto da Google" se vuoi un look più minimale */
+.goog-logo-link, .goog-te-gadget span {
+    display: none !important;
+}
+.goog-te-gadget {
+    color: transparent !important;
+    font-family: var(--font-ui) !important;
+    font-size: 0 !important;
+}
 body.rail-closed { grid-template-columns: 0 minmax(0, 1fr); }
 
 a { color: var(--accent); text-underline-offset: 3px; }
