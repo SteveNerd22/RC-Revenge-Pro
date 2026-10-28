@@ -1,0 +1,403 @@
+<div class="col">
+
+<!-- ===================== INTRODUCTION ===================== -->
+<section>
+    <h2 id="intro">Introduction</h2>
+    <p>This document explains, with examples, images, and source code snippets, how the game determines where you are on the track: lap completion, route validation, and shortcut behavior all depend on it.</p>
+    <p>Before diving in, we need to understand the tools the game uses and give each one a name. This will make it easier to follow along even in the most specific cases.</p>
+
+    <div class="brief">
+        <h4>In brief</h4>
+        <ul>
+            <li>The track is a <strong>chain of invisible segments</strong> called AI Nodes.</li>
+            <li>Each node has a <strong>zone</strong>: if the center of your car is inside it, you can be assigned to that node.</li>
+            <li>The game assigns you <strong>a single current node</strong> by searching near the previous one: from 7 nodes behind to 15 ahead.</li>
+            <li>Each node knows how much distance remains to the finish line, from which the game calculates your distance to the finish.</li>
+            <li>The finish line drawn on the ground doesn't matter: a lap counts only if the distance and an internal flag indicate you've crossed it.</li>
+        </ul>
+    </div>
+
+    <div class="legend">
+        <span><i style="background:var(--end)"></i>node endpoint</span>
+        <span><i style="background:var(--centre)"></i>node center</span>
+    </div>
+</section>
+
+<!-- ===================== 1. AI NODE ===================== -->
+<section>
+    <h2 id="ai-nodes">1. AI Node</h2>
+
+    <figure class="fig" id="fig-node">
+        <div class="frame">
+            <img src="img/figura-01.png" alt="AI Node">
+        </div>
+        <figcaption>An isolated AI Node: two endpoints (red) and a center (blue).</figcaption>
+    </figure>
+
+    <p>What you see in the image is an <dfn class="term" tabindex="0" data-def="Invisible segment placed across the track, with two endpoints and a center. In code: sAINode.">AI Node</dfn>. It is the most important component to understand this document: the game does not see the layout the way we do, to it the track is just a series of segments called AI Nodes.</p>
+    <p>Here we limit ourselves to seeing what a node is. What it does will be covered later. A node has <strong>2 endpoints</strong> (red, one on each side of the track) and <strong>1 center</strong> (blue): they are called "node endpoint" and "node center".</p>
+
+    <div class="note code">
+        <p><b>Key note.</b> The center <strong>is not at the geometric center</strong> between the two endpoints: in some cases, it is much closer to one endpoint than the other. On node 0 of track 1, it is about 120 units from one endpoint and 1250 from the other. We will see that this matters because the center is the point against which the game compares your distance.</p>
+    </div>
+
+    <h3 id="ai-node-types" data-toc="Node Types">1.1 Node types (priority)</h3>
+    <p>AI Nodes are not all the same. In addition to size and orientation, each node has a number from <strong>0 to 10</strong> called <code>priority</code>. In the export script, each priority corresponds to a color. Almost all of them regulate CPU car choices, but some also affect the player.</p>
+
+    <figure class="fig" id="fig-types">
+        <div class="frame">
+            <img src="img/figura-02.png" alt="AI Node Types">
+        </div>
+        <figcaption>Node types can be recognized by their color in the export.</figcaption>
+    </figure>
+
+    <div class="table-wrap"><table>
+        <thead><tr><th>Priority</th><th>Color</th><th>Name</th><th>What it does</th><th>Who it affects</th></tr></thead>
+        <tbody>
+            <tr><td>0</td><td><span class="chip"><i style="background:#1ad133"></i>green</span></td><td>Standard</td><td>The most common type, with no special functions.</td><td></td></tr>
+            <tr><td>1</td><td><span class="chip"><i style="background:#ffe619"></i>yellow</span></td><td>Weapon branch</td><td>Alternative route tied to power-ups: CPUs that already have a weapon avoid this branch.</td><td><span class="who">CPU</span></td></tr>
+            <tr><td>2</td><td><span class="chip"><i style="background:#999"></i>gray</span></td><td>Unknown</td><td>In the analyzed code, I couldn't find what it does. <span class="tag-unk">To be verified.</span></td><td><span class="who">?</span></td></tr>
+            <tr><td>3</td><td><span class="chip"><i style="background:#1ae6e6"></i>turquoise</span></td><td>Recovery branch</td><td>Taken only by CPU cars in the lower half of the standings.</td><td><span class="who">CPU</span></td></tr>
+            <tr><td>4</td><td><span class="chip"><i style="background:#3366ff"></i>blue</span></td><td>Shortcut / cups</td><td>Choice depends on standings and cup difficulty. In high-level cups, all CPUs take it.</td><td><span class="who">CPU</span></td></tr>
+            <tr><td>5</td><td><span class="chip"><i style="background:#ff1a1a"></i>red</span></td><td>CPU ban</td><td>The CPU always avoids this branch.</td><td><span class="who">CPU</span></td></tr>
+            <tr><td>6 – 9</td><td><span class="chip"><i style="background:#ffbf66"></i>orange → <i style="background:#991a00"></i>brown</span></td><td>Throttle limit</td><td>Limits CPU gas to a fixed percentage: 75% (6), 50% (7), 25% (8), 12% (9).</td><td><span class="who">CPU</span></td></tr>
+            <tr><td>10</td><td><span class="chip"><i style="background:#ff33ff"></i>purple</span></td><td>Special checkpoint</td><td>Passing through it turns on the flag that allows laps to be counted (<a href="#giri-flag">section 7</a>). In tracks checked so far (such as track 1 and 14), there are no nodes of this type.</td><td><span class="who player">player</span></td></tr>
+        </tbody>
+    </table></div>
+
+    <div class="note hyp">
+        <p><b>To be verified.</b> Colors and names are from our export. "CPU ban" (priority 5) suggests a shortcut meant for the player, but from the code, we only know that the CPU does not take it. On track 1 there are nodes 0, 2, 5, 6, and 7, and no node 10.</p>
+    </div>
+</section>
+
+<!-- ===================== 2. ZONES ===================== -->
+<section>
+    <h2 id="node-zones">2. Node Zones</h2>
+
+    <figure class="fig" id="fig-zone">
+        <div class="frame">
+            <img src="img/figura-03.png" alt="Zones">
+        </div>
+        <figcaption>A node's zone: a box enclosing the stretch up to the next node.</figcaption>
+    </figure>
+
+    <p>Beyond the shape we saw, each node has a <dfn class="term" tabindex="0" data-def="Box tied to an AI Node. If the car's center is inside, the node can be assigned to that car.">zone</dfn>: a space of relevance. It is a three-dimensional box, constructed as follows:</p>
+    <ul>
+        <li><strong>on the ground</strong>, a rectangle containing the node's endpoints and those of the next node;</li>
+        <li><strong>in height</strong>, a band 400 units above and 400 below the node's center.</li>
+    </ul>
+    <p>Only the <strong>car's center</strong> matters: if it is inside the box, you are "in the zone". Being exactly on the border does not count (in local search).</p>
+
+    <p>The zones <strong>overlap</strong> quite a bit, especially in areas with obstacles in the middle of the track. At any given moment, you can be inside multiple zones simultaneously.</p>
+
+    <figure class="fig" id="fig-overlap">
+        <div class="frame">
+            <img src="img/figura-04.png" alt="Crowded zones">
+        </div>
+        <figcaption>Zones overlap. Here the car is inside three zones.</figcaption>
+    </figure>
+
+    <div class="note">
+        <p><b>Key note.</b> In this section, we only describe what a zone looks like. How the game uses it to decide where you are is the topic of section 3.</p>
+    </div>
+</section>
+
+<!-- ===================== 3. CURRENT NODE ===================== -->
+<section>
+    <h2 id="current-node">3. The Current Node (<code>pCurNode</code>) and Local Search</h2>
+    <p>At each update, the car is associated with a node via a pointer called <code>pCurNode</code>. It is the link between the vehicle and the logical structure of the track, and it is what the game uses for:</p>
+    <ul>
+        <li><strong>Progression and standings:</strong> distance traveled, completed laps, and position of each competitor.</li>
+        <li><strong>CPU driving:</strong> steering, trajectory, choice of forks and shortcuts.</li>
+        <li><strong>Wrong way and recovery:</strong> if you go in the wrong direction, the game looks at nodes near yours.</li>
+    </ul>
+    <p>For the player, the current node is recalculated every time <code>PlayerControl</code> runs (the function governing the player's car), which the game reschedules every <code>0x14</code> time units (the exact unit has not been verified). The method is <strong>local search</strong>: the game does not look at the entire track, but only at the nodes around the last known node.</p>
+
+    <h3 id="search-window" data-toc="Search Window">3.1 The search window</h3>
+    <p>The set of nodes the game checks is called the <dfn class="term" tabindex="0" data-def="The nodes the game considers at each update: a few behind and a few ahead of the current node.">search window</dfn>. The scan is performed by two recursive functions: <code>AINodeBackTrackRecursive</code> for previous nodes and <code>AINodeForwardTrackRecursive</code> for subsequent ones. For the player, the window is as follows:</p>
+
+    <div class="table-wrap"><table>
+        <thead><tr><th>Who</th><th>Backward</th><th>Forward</th><th>Forks</th></tr></thead>
+        <tbody>
+            <tr><td>Player</td><td>7 nodes</td><td>15 nodes</td><td>examines both branches</td></tr>
+            <tr><td>CPU</td><td>7 nodes</td><td>8 nodes</td><td>only the chosen branch</td></tr>
+        </tbody>
+    </table></div>
+
+    <p>That's 23 nodes (1 current, 7 backward, and 15 forward) on a stretch without forks or reconvergences. At forks, the window counts steps along each branch: you can examine more nodes in total, but always within 7 steps backward and 15 forward on each.</p>
+
+    <figure class="fig" id="fig-window">
+        <div class="frame">
+            <img src="img/figura-05.png" alt="Highlighted zones view">
+        </div>
+        <figcaption>The player's window: 1 current zone [green], 7 backward [blue], 15 forward [red]. 23 zones in total on a stretch without forks.</figcaption>
+    </figure>
+
+    <div class="note real">
+        <p><b>Why "7 and 15" instead of "8 and 16".</b> In the code, the numbers are 8 and 0x10 (16), but each recursive call consumes one before checking. <code>BackTrack(node, 8)</code> goes back 7 steps and from there checks 16 nodes forward (from −7 to +8). <code>ForwardTrack(node, 16)</code> goes forward 15 steps and from there checks 16 nodes backward (from +15 to 0). The union is from −7 to +15. If we also count the current node, the last useful zone ahead is <strong>the sixteenth</strong>: the starting one plus 15.</p>
+    </div>
+
+<pre><code>// AINodeUpdateCurrent (AINODE.c), player branch
+psVar4-&gt;iRange = 0x10;
+AINodeBackTrackRecursive(pCurNode, 8);       // from -7 to +8
+psVar4-&gt;iRange = 0x10;
+AINodeForwardTrackRecursive(pCurNode, 0x10); // from 0 to +15</code></pre>
+
+    <div class="note code">
+        <p><b>The proof.</b> I reproduced the three functions line by line and counted the nodes actually examined: on a stretch without forks or reconvergences, they turn out to be exactly from −7 to +15, with no gaps, 23 in total.</p>
+    </div>
+
+    <div class="note code">
+        <p><b>Watch out for reconvergences.</b> The count "−7 and +15, 23 nodes" only applies where the track is a simple chain. Where two roads rejoin (a node with two predecessors), the backward part of the search also enters the other road, and nodes that are not "just behind" you but on another road end up in the window. Example, track 14, node 225: in steps 0 to +4, nodes 203–207 also appear, from a parallel road between about 430 and 900 units lower, which reconverges at node 208. The window is therefore a list of <em>candidates</em>: the ones that actually matter are only those whose zone contains the car (section 2, with the ±400 height band), and the lower road is mostly discarded. The height comparison uses the node center, so it is approximated.</p>
+    </div>
+
+    <h3 id="overlaps" data-toc="Overlapping Zones">3.2 When zones overlap</h3>
+    <p>If the car is inside multiple zones of the window, the game calculates the distance (in 3D space) between the car and the <strong>center</strong> of each candidate node. The new <code>pCurNode</code> is the one with the closest center. In case of a tie, the first one found wins.</p>
+    <div class="note code">
+        <p><b>Therefore:</b> the node whose zone "contains you best" does not matter; the closest center does. This is why a mispositioned center (see the note in section 1) genuinely changes which node is assigned to you.</p>
+    </div>
+
+    <h3 id="skipping" data-toc="Skips and Beyond Window">3.3 Skips and beyond the window</h3>
+    <p>The window determines how much the game tolerates cuts and jumps. What matters is where you land relative to the node you had <em>before</em> the jump:</p>
+    <ul>
+        <li><strong>Within the window.</strong> If you land, for example, 5 or 10 nodes ahead, the search finds the zone where you are. <code>pCurNode</code> updates and the game accepts the movement as if you had driven.</li>
+        <li><strong>Beyond the window.</strong> If you land beyond the sixteenth zone (the starting one plus 15), no examined zone contains the car. For now, let's say the node remains the old one.</li>
+    </ul>
+</section>
+
+<!-- ===================== 4. EXAMPLES ===================== -->
+<section>
+    <h2 id="practical-examples">4. Practical examples on the search window</h2>
+
+    <h3 id="ex-canyon" data-toc="Example 1: Calamity Canyon">Example 1: Calamity Canyon (the intersection)</h3>
+    <figure class="fig" id="fig-ex1">
+        <div class="frame">
+            <img src="img/figura-06.png" alt="Zones in Calamity Canyon">
+        </div>
+        <figcaption>Calamity Canyon: the intersection joins two points of the chain that are far apart.</figcaption>
+    </figure>
+    <p>Calamity Canyon shows the geometric limit of the window. The route passes through the same intersection twice, but the nodes of the two passes are far apart in the chain. Anyone taking the wrong branch finds the next stretch too far ahead, beyond the window: the alternative area is outside local search, so you cannot "grab" the distant stretch.</p>
+
+    <h3 id="ex-summer" data-toc="Example 2: I Know What You Drove">Example 2: "I Know What You Drove Last Summer"</h3>
+    <figure class="fig" id="fig-ex2">
+        <div class="frame">
+            <img src="img/figura-07.png" alt="Zones in IKWYDLS">
+        </div>
+        <figcaption>The skip lands in the last useful zone of the window.</figcaption>
+    </figure>
+    <p>This is <a href="https://www.speedrun.com/rc_revenge_pro/runs/y8kqlgxy" target="_blank" rel="noopener">cocodoggo's record</a> skip on this track. Upon landing, the car hooks the <strong>sixteenth zone</strong> (start + 15), the last useful one, in purple. There is no margin: with even a single extra zone in the cut stretch, local search would not have seen the landing.</p>
+
+    <h3 id="ex-cars" data-toc="Example 3: Cars Attacks Again">Example 3: "Cars Attacks! Again!"</h3>
+    <figure class="fig" id="fig-ex3">
+        <div class="frame">
+            <img src="img/figura-08.png" alt="Zones in Cars Attacks Again">
+        </div>
+        <figcaption>Semitransparent zones, because with opaque materials the stretch is unreadable.</figcaption>
+    </figure>
+    <p>From <a href="https://www.speedrun.com/rc_revenge_pro/runs/yvx39doz" target="_blank" rel="noopener">SteveNerd's record</a>, on a shortcut discovered by cocodoggo. The stretch has so many overlapping zones that semitransparent volumes are needed to read it. From the takeoff point to the landing, there are <strong>exactly 16 zones</strong>: with one more zone, the skip would be outside the window.</p>
+
+    <h3 id="ex-lost" data-toc="Example 4: Beyond the Window">Example 4: Beyond the window</h3>
+    <figure class="fig" id="fig-ex4">
+        <div class="frame">
+            <img src="img/figura-09.png" alt="ISKWYDLS">
+        </div>
+        <figcaption>The car lands right after the last red zone: the window doesn't see it.</figcaption>
+    </figure>
+    <p>Another discovery by <a href="https://od.lk/s/NzBfNDQwMzE5ODNfaUZhbTE/i%20still%20what%20you%20drove%20last%20summer.mov" target="_blank" rel="noopener">cocodoggo</a>: what happens when the skip exceeds the threshold. The car lands just past the sixteenth zone (blue X), right in front of the last red zone. A fraction further back and it would have been hooked; instead, local search fails.</p>
+    <p>In a race, the player doesn't see where zone coverage ends: instead of pushing the margin, they perform a longer reversing maneuver in an area devoid of nodes until they re-hook a valid point.</p>
+    <div class="note">
+        <p><b>To remember.</b> The examples should be re-read after section 6: that's where we discover the window isn't the only check.</p>
+    </div>
+</section>
+
+<!-- ===================== 5. DISTANCE ===================== -->
+<section>
+    <h2 id="finish-dist">5. Distance to the Finish Line</h2>
+    <p>So far we've seen <em>where</em> you are (the node). However, the game also wants to know <em>how much distance remains for you</em>, because it derives laps and standings from this number. To do this, every node carries a value.</p>
+
+    <figure class="fig" id="fig-fdist">
+        <div class="frame">
+            <img src="img/figura-10.png" alt="Node distance">
+        </div>
+        <figcaption>Each node knows how much road is left to the finish line.</figcaption>
+    </figure>
+
+    <h3 id="ifinishdist" data-toc="Node Value">5.1 The value written in the node</h3>
+    <p>Each node contains a number called <code>iFinishDist</code>: <strong>the distance remaining from that node to the finish line</strong>, following the chain. The finish line node has 0, the one immediately before has a small value, distant ones have large values. The sum for the entire lap is called <code>nodeTotalDist</code>; for example, on track 1 it is 131008.</p>
+    <p>Two important consequences:</p>
+    <ul>
+        <li>This value is <strong>fixed</strong>; it does not depend on where you are, it is written in the track file.</li>
+        <li>The game never checks if you touched the finish line: it looks at how your distance changes from one update to the next (<a href="#giri-flag">section 7</a>).</li>
+    </ul>
+
+    <h3 id="along" data-toc="Progress Inside Node">5.2 How far along you are inside the node</h3>
+    <p>The node itself doesn't tell you your <em>exact</em> position: it only knows its center. To correct this, the game measures how far ahead you are relative to that center, along the node's travel direction.</p>
+    <ul>
+        <li><strong>Travel direction:</strong> a direction already stored in the node (<code>svForwardDir</code>). At forks (a node with two successors), it is the average of the two directions, which is not normalized to length 1. How the stored direction is calculated has not been verified.</li>
+        <li><strong>Progress:</strong> the vector from the node center to the car is multiplied (dot product) by the travel direction, so only the component of movement following the direction counts. It is positive if you are past the node center, negative if you are before it. The game <strong>subtracts</strong> this from the node's <code>iFinishDist</code> to get a more precise value than just the node's distance.</li>
+    </ul>
+
+    <figure class="fig" id="fig-along">
+        <div class="frame">
+            <img src="img/figura-11.png" alt="Progress">
+        </div>
+        <figcaption>The travel direction (red), progress (blue), and node-to-player distance (black). From here you can see that progress is only the part of the distance lying along the travel direction.</figcaption>
+    </figure>
+
+    <p>The car's distance from the finish line is therefore:</p>
+<pre><code>progress          = dot_product(car_pos - node_center, node_direction)   // AINodeDistanceAlong
+final_distance    = node.iFinishDist - progress                          // AINodeUpdateFinishDistance
+if final_distance &lt; 0: final_distance += nodeTotalDist                   // you are past the finish line: new lap</code></pre>
+
+    <div class="note code">
+        <p><b>Limits.</b> In <code>AINodeDistanceAlong</code> and <code>AINodeUpdateFinishDistance</code> there is no cap on progress: the value is subtracted as-is. The calculation is in 3D (height also counts, so climbs and descents matter), the car position is the physical position divided by 256, and the difference from the node center is kept in a 16-bit signed integer. Progress remains small only because normally the current node is the one whose zone contains the car. If the car leaves every zone and the old node remains (section 6.2), progress can become very large.</p>
+    </div>
+
+    <div class="note hyp">
+        <p><b>Hypothesis.</b> The dot product result comes from the PS2 graphics processor (GTE) in fixed-point, and the exact scale is not verified: I assume it matches the position units. I don't know if the result is divided by 4096 (the fixed-point direction has length 4096), nor if GTE functions limit it to 16 bits. <code>PS2C_SetGteMatrixForDotProduct</code>, <code>PS2C_GteMatrixMulVec16</code>, and <code>PS2C_GetDotProductResult</code> would be needed. The idea (progress along the direction) is certain, the numerical factor is not.</p>
+    </div>
+
+    <h3 id="raced" data-toc="Distance Traveled">5.3 Remaining distance and distance traveled</h3>
+    <p>From this, the game derives two numbers, updated at every update:</p>
+    <ul>
+        <li><code>iFinishDist</code> (of the car): how much distance is left to finish the lap;</li>
+        <li><code>iTotalRacedDist</code>: how much distance you have traveled in the entire race. It is <code>(nodeTotalDist − final_distance) + completed_laps × nodeTotalDist</code>, plus a term compensating for backward crossings of the finish line (section 7).</li>
+    </ul>
+    <div class="note hyp">
+        <p><b>To be verified.</b> I haven't seen yet where the game uses <code>iTotalRacedDist</code>: by name it's the natural candidate for sorting the standings, but I'm writing this as a hypothesis.</p>
+    </div>
+</section>
+
+<!-- ===================== 6. GLOBAL SEARCH ===================== -->
+<section>
+    <h2 id="global-search">6. We told a half-lie</h2>
+    <p>In sections 3 and 4, we said that if you land beyond the window, the game doesn't see you anymore and the node stays the old one. That was a simplification. The game has a <strong>second check</strong>, which is not local: it looks at the entire track, and it uses the finish line distance we just saw.</p>
+
+    <h3 id="global-how" data-toc="How It Works">6.1 Distance-based search</h3>
+    <p>For the player, when the window finds no nodes, the game calls <code>AINodeNearestInRange</code>. It works like this:</p>
+    <ol>
+        <li>It takes the <code>iFinishDist</code> value of the <strong>node you had before</strong> (<code>pPrevValidNode</code>, a copy of the last current node).</li>
+        <li>It scans <strong>all nodes on the track</strong> and keeps only those whose <code>iFinishDist</code> differs from it by less than <strong>11000 units</strong>, forward or backward.</li>
+        <li>Among these, it considers only those whose zone contains the car (same rule as before, with ±400 height and same surface: water or dirt; here, from reading the code, rectangle borders count even if you are right on top of them).</li>
+        <li>If there is more than one, the closest center wins.</li>
+    </ol>
+
+    <div class="note code">
+        <p><b>Key difference.</b> The window counts <em>how many nodes</em> separate you from the starting node. The distance search counts <em>how many distance units</em>. They are not the same thing: if nodes are sparse (far apart), 11000 units are worth fewer than 15 nodes. If they are dense, they are worth more. On track 1, with nodes averaging about 900 units apart, 11000 units are roughly 12 nodes.</p>
+    </div>
+
+    <h3 id="global-lost" data-toc="If Nothing Found">6.2 If nothing is found</h3>
+    <p>If even the distance search finds no node, the game tries <code>AINodeInAnyNode</code>: it checks if the car is inside the zone of <em>any</em> node. If so, it increments the <code>iGettingLost</code> counter (indicating you are "lost", meaning on a track zone but far from your node) and clears the wrong-way flag, but <strong>it does not reassign you to that node</strong>. If none of the three attempts yields a node, <code>pCurNode</code> reverts to <code>pPrevValidNode</code>: you remain tied to the old node.</p>
+
+    <div class="table-wrap"><table>
+        <thead><tr><th>Step</th><th>What it checks</th><th>If a node is found</th></tr></thead>
+        <tbody>
+            <tr><td>1</td><td>Window: from −7 to +15 nodes</td><td>Assigns you the node with the closest center.</td></tr>
+            <tr><td>2</td><td>All nodes with <code>iFinishDist</code> within 11000 of the starting node</td><td>Assigns you the node with the closest center.</td></tr>
+            <tr><td>3</td><td>All nodes, to see if you are anywhere on the track</td><td>Does not reassign. Increments <code>iGettingLost</code>.</td></tr>
+            <tr><td>4</td><td>Nothing found</td><td>You stay on the old node.</td></tr>
+        </tbody>
+    </table></div>
+
+    <div class="note hyp">
+        <p><b>A detail to verify.</b> From reading the code, the difference in <code>iFinishDist</code> is calculated without considering that distance is circular (after the finish line it resets to zero). If so, near the finish line the distance search does not "see" nodes on the other side of the line. This needs to be checked in <code>AINodeNearestInRange</code>'s code.</p>
+    </div>
+
+    <h3 id="global-examples" data-toc="Effect on Examples">6.3 Effect on the examples</h3>
+    <p>This potentially changes the interpretation of the examples in section 4. A landing beyond the sixteenth zone is <em>not</em> necessarily lost: it is re-hooked by the distance search if the landing node has an <code>iFinishDist</code> within 11000 of the starting one and its zone contains the car.</p>
+    <ul>
+        <li><strong>Example 1 (Calamity Canyon).</strong> The two points of the intersection are far apart in the chain, so in all likelihood they are also far apart in <code>iFinishDist</code>: the difference should be much greater than 11000. In that case, both the window and the distance search exclude them, which is what prevents the skip.</li>
+        <li><strong>Examples 2 and 3.</strong> They land on the sixteenth zone, so the window already catches them. Distance search is not needed.</li>
+        <li><strong>Example 4.</strong> It lands just past the sixteenth: the window fails, but distance search might re-hook it. It depends on the landing node's <code>iFinishDist</code> value relative to the starting one.</li>
+    </ul>
+    <div class="note hyp">
+        <p><b>Not yet verified.</b> To know what actually happens in each example, we need to compare the <code>iFinishDist</code> values of the starting and landing nodes. Until we do, the conclusions on examples 1 and 4 are hypotheses.</p>
+    </div>
+</section>
+
+<!-- ===================== 7. FINISH LINE AND LAPS ===================== -->
+<section>
+    <h2 id="giri-flag">7. The Finish Line Is an Illusion</h2>
+
+    <p>There is a checkered stripe on the track, but the game doesn't care. There is no collision sensor on the line. To the game, a lap is a number: your distance to the finish line (the car's <code>iFinishDist</code>), which decreases as you advance. When you reach 0 and pass the center of the finish line node, the number <strong>jumps from nearly zero to nearly the full lap length</strong>. That jump is the game's "finish line".</p>
+
+    <h3 id="giri-regole" data-toc="When a Lap Counts">7.1 When a lap counts</h3>
+    <p>At each update, the game compares the new distance with the previous update's distance. The "previous" one isn't derived from anything special: it's the value the game calculated and saved in the car at the previous update, which it overwrites right after the checks.</p>
+    <div class="table-wrap"><table>
+        <thead><tr><th>What happens to the distance</th><th>Threshold (track 1)</th><th>What it means</th></tr></thead>
+        <tbody>
+            <tr><td>Jumps up abruptly by <strong>more than <code>nodeTotalDist − 6000</code></strong></td><td>over 125008</td><td>You crossed the finish line <strong>forward</strong>. The lap counts only if the flag is on.</td></tr>
+            <tr><td>Drops abruptly by <strong>more than <code>nodeTotalDist − 4500</code></strong></td><td>over 126508</td><td>You crossed the finish line <strong>backward</strong> (you went back before the line).</td></tr>
+            <tr><td>Any other change</td><td></td><td>Normal driving: no lap. This also includes jumps bringing you past the line while covering too much distance (more than 6000 units forward, more than 4500 backward).</td></tr>
+        </tbody>
+    </table></div>
+    <p>Note that the thresholds look at <em>the jump of the number</em>, not what you did with the car. The game doesn't know if you actually passed the line: it only knows that your distance jumped from nearly 0 to nearly the full lap length.</p>
+
+    <h4>What 6000 and 4500 are</h4>
+    <p>They are not jumps you have to make: they are <strong>margins</strong>. The number's jump is nearly a full lap, and the distance you actually traveled between the two updates is the difference:</p>
+<pre><code>distance_traveled = nodeTotalDist - number_jump</code></pre>
+    <p>Example on track 1 (<code>nodeTotalDist</code> = 131008): before you were 50 away, now 130900 are left. The number jumped by 130850, which is more than 125008, so the finish line is recognized. The distance traveled between the two updates is 131008 − 130850 = 158 units, less than 6000.</p>
+    <p>In other words: the forward finish line is recognized only if between the two updates you traveled <strong>less than 6000 distance units</strong> across the line (less than 4500 backward). If you travel more—for example, with a skip that carries you past the line—neither the forward nor the backward branch triggers: the lap doesn't count, and since the saved distance is updated anyway, there is no second try.</p>
+    <div class="note hyp">
+        <p><b>To be verified.</b> I don't know how much distance is actually traveled between two updates during a race: it depends on the time unit (<code>0x14</code>) and the progress scale (section 5.2).</p>
+    </div>
+
+    <h3 id="giri-flag-2" data-toc="The Flag">7.2 The flag authorizing the lap</h3>
+    <p>If the jump alone were enough, you could pass back and forth across the line and count laps on every pass. To prevent this, there is an internal flag, <code>iHalfLapDone</code> ("half lap done"). The lap is counted only if this flag is turned on, and as soon as the lap is counted, the flag turns off.</p>
+
+    <figure class="fig" id="fig-flag">
+        <svg viewBox="0 0 720 190" role="img" aria-label="Remaining distance line: the flag turns on when dropping below one quarter of the lap, coming from between one quarter and half">
+            <line x1="40" y1="90" x2="680" y2="90" stroke="#4a515b" stroke-width="4"/>
+            <rect x="360" y="70" width="160" height="40" fill="#f2c230" opacity=".18"/>
+            <g stroke="#e8e6e1" stroke-width="2"><path d="M40 78v24M360 78v24M520 78v24M680 78v24"/></g>
+            <g font-family="Archivo, sans-serif" font-size="13" fill="#e8e6e1" text-anchor="middle">
+                <text x="14" y="128" text-anchor="start">full lap</text>
+                <text x="14" y="146" text-anchor="start" fill="#9b9ea6">(right after the line)</text>
+                <text x="360" y="128">half lap</text>
+                <text x="520" y="128">one quarter</text>
+                <text x="680" y="128">0 (the line)</text>
+            </g>
+            <g font-family="Archivo, sans-serif" font-size="13" text-anchor="middle">
+                <text x="440" y="62" fill="#f2c230">zone where check starts</text>
+            </g>
+            <text x="520" y="26" text-anchor="middle" font-family="Archivo, sans-serif" font-size="13" fill="#f2c230">dropping below 1/4 starting from between 1/2 and 1/4 = flag on</text>
+            <text x="360" y="176" text-anchor="middle" font-family="Archivo, sans-serif" font-size="13" fill="#9b9ea6">car moves from left to right: remaining distance drops</text>
+        </svg>
+        <figcaption>The flag turns on in the last quarter of the lap, not at halfway.</figcaption>
+    </figure>
+
+    <p>The flag turns on in two ways:</p>
+    <ol>
+        <li><strong>Passing through a priority 10 node</strong> (purple): the flag becomes 1 immediately.</li>
+        <li><strong>Via distance.</strong> If in the previous update the remaining distance was between a quarter and a half of the lap, and now it is below a quarter, the flag turns on.</li>
+    </ol>
+    <div class="note hyp">
+        <p><b>Watch the name.</b> The flag is called "half lap", but under the distance rule it turns on when less than a quarter of a lap remains to the line: the last quarter, not the half. The name is just what whoever wrote the code chose.</p>
+    </div>
+    <p>On track 1 there are no priority 10 nodes, so only the distance rule counts there. One consequence: because the check looks at the <em>previous</em> update, a direct jump from more than half a lap to less than a quarter completely skips the check and leaves the flag off (unless passing through a priority 10 node).</p>
+
+    <h3 id="giri-inizio" data-toc="Start and End of Race">7.3 Race start, backward crossing, and finish</h3>
+    <ul>
+        <li><strong>Start.</strong> At the start of the race, the lap counter is −1 and the flag is already on, so the first pass across the line (the start) counts as lap 0 and starts the timers.</li>
+        <li><strong>Crossing backward.</strong> The game sets <code>iLineClockOver</code> to −1, a factor used to keep the total distance traveled accurate. When you then return forward, the value goes back to 0, and the lap counts again only if the flag is on. You do not accumulate forward and backward laps.</li>
+        <li><strong>Race finish.</strong> When completed laps reach the race lap count, the car passes under autopilot control (<code>AIControl</code>) and the final time is recorded.</li>
+    </ul>
+
+    <h3 id="wrongway" data-toc="Wrong Way">7.4 Going the wrong way</h3>
+    <p>Only for players, the game also measures how much you are heading in the wrong direction. If the car moves in the direction it is facing and the distance to the finish line <strong>increases</strong> by 1–499 units between two updates, the <code>iGettingWrongWay</code> counter grows by that amount (maximum 1500). In all other cases, it drops by 20 per update down to zero.</p>
+    <div class="note hyp">
+        <p><b>To be verified.</b> This is only the counter. What threshold triggers the wrong-way warning is not in these functions.</p>
+    </div>
+
+    <h3 id="giri-trucchi" data-toc="What You Can Do">7.5 What this means for shortcuts</h3>
+    <ul>
+        <li>A lap counts because the number jumps, not because you pass the line. If the distance jumps forward past the threshold (i.e., if between the two updates you traveled less than 6000 units across the line) and the flag is on, the lap is valid, even if you are not at the drawn finish line spot.</li>
+        <li>Cutting a section of the track with a node jump (within the rules of sections 3 and 6) is not seen as a problem: the game measures distance, not the path taken. However, a jump carrying you past the line while covering more than 6000 units in a single update is not recognized as a finish line cross, and there is no second try.</li>
+        <li>To get a lap, you still have to reach the last quarter of the lap (or touch a priority 10 node), then cross the line with a movement under the margin.</li>
+    </ul>
+    <div class="note hyp">
+        <p><b>To be verified.</b> These consequences come from reading the code and I haven't tested them in-game.</p>
+    </div>
+</section>
+
+</div>
